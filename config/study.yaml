@@ -1,0 +1,47 @@
+seed: 1729
+selection:
+  pdg_id: 22
+  pt_min: 5.0
+  abs_eta_max: 1.44
+matching:
+  # Photons: straight propagation from the production vertex to the barrel ECAL.
+  # Electrons require a separately validated matching prescription; see docs/physics.md.
+  direction: ecal_barrel
+  max_dr: 0.1
+  ecal_radius_cm: 129.0
+  ecal_half_length_cm: 300.0
+split:
+  train: 0.6
+  validation: 0.2
+weights:
+  # Training/shape weights, NOT cross-section weights or a trigger-rate estimate.
+  generator: absolute
+  balance_samples: true
+features:
+  # pt is shown in diagnostics but excluded from default training to limit sculpting.
+  sigma_ieta_ieta: {direction: less, min: 0.0, max: 0.06}
+  s_major: {direction: less, min: 0.0, max: 3.0}
+  s_minor: {direction: less, min: 0.0, max: 1.5}
+  shape_asymmetry: {direction: greater, min: -1.0, max: 1.0}
+  hoe: {direction: less, min: 0.0, max: 1.0}
+  ecal_iso: {direction: less, min: 0.0, max: 100.0}
+  hcal_iso: {direction: less, min: 0.0, max: 100.0}
+  r9: {direction: greater, min: 0.0, max: 1.2}
+  track_iso: {direction: less, min: 0.0, max: 100.0}
+working_points: [0.7, 0.8, 0.9]
+cuts:
+  trials: 3000
+bdt:
+  grid:
+    n_estimators: [100]
+    learning_rate: [0.05, 0.1]
+    max_depth: [2, 3]
+    min_samples_leaf: [50]
+    subsample: [0.8]
+evaluation:
+  working_point: 0.8
+  bins:
+    pt: [5, 10, 20, 40, 60, 100, 200, 500]
+    eta: [-1.44, -1.0, -0.5, 0, 0.5, 1.0, 1.44]
+    gen_lxy: [0, 0.01, 0.1, 1, 10, 30, 60, 100, 129]
+    gen_abs_z: [0, 0.1, 1, 10, 30, 60, 100, 200, 300]
