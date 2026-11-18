@@ -1,16 +1,34 @@
 # CMSSW profile and implementation
 
-## Candidate release: sample compatibility unverified
+## Release choice for Phase2Spring24 inputs
 
-The default is **CMSSW_20_1_0_pre5** with **el9_amd64_gcc14**, checked on
-2026-11-18 against the [release list](https://github.com/cms-sw/cmssw/releases).
-It is the newest standard prerelease listed, published on 2026-10-30; special
-builds such as `_PY314` and integration builds are excluded from this choice.
-The [build request](https://github.com/cms-sw/cmssw/issues/52339) records completion
-for EL9 GCC14, and the [release notes](https://github.com/cms-sw/cmssw/releases/tag/CMSSW_20_1_0_pre5)
-identify the same architecture. This is a candidate for testing, not a verified
-working release for the configured 140X samples. A successful build record or
-campaign recipe does not establish that the exact GMSB file can be processed.
+The default is **CMSSW_17_0_0** with **el9_amd64_gcc13**, checked on 2026-11-18.
+It is the latest published 17_X release in the
+[release list](https://github.com/cms-sw/cmssw/releases), published on 2026-11-05.
+The [build and upload record](https://github.com/cms-sw/cmssw/issues/52395#issuecomment-6658918265)
+confirms availability for EL9 GCC13.
+
+The [20_X schema transition](https://github.com/cms-sw/cmssw/pull/50968)
+moved stored types into `io_v1`, reset their class versions and removed legacy
+read rules for non-RAW types. The configured GEN-SIM-DIGI-RAW-MINIAOD files
+contain such types. A 20_1_0_pre5 local test opened the remote GMSB file but
+aborted in `PoolSource` initialization with `TStreamerInfo::BuildCheck` for
+`l1t::SAMuon`: the stored and active layouts had version 3 but different checksums.
+No event was processed. Existing input drop rules did not avoid this failure.
+
+The [14_0_0 dictionary](https://github.com/cms-sw/cmssw/blob/CMSSW_14_0_0/DataFormats/L1TMuonPhase2/src/classes_def.xml)
+records `l1t::SAMuon` version 3 with checksum `3294978731`.
+The [17_0_0 dictionary](https://github.com/cms-sw/cmssw/blob/CMSSW_17_0_0/DataFormats/L1TMuonPhase2/src/classes_def.xml)
+retains that version/checksum alongside current version 4; the
+[20_1_0_pre5 dictionary](https://github.com/cms-sw/cmssw/blob/CMSSW_20_1_0_pre5/DataFormats/L1TMuonPhase2/src/classes_def.xml)
+instead declares `l1t::io_v1::SAMuon` version 3 with checksum `2872078027`.
+The input file's checksum was not printed in the failure log, so this source
+comparison is not a measurement of its exact streamer metadata.
+
+This evidence supports using the 17_X release for the next local test.
+It does not establish successful processing of every required product, the HLT
+replay, or the final ntuple. Do not bypass the failure by disabling ROOT errors
+or changing a dictionary version locally.
 
 ## Input campaign and reconstruction settings
 
@@ -25,16 +43,16 @@ campaign recipe does not establish that the exact GMSB file can be processed.
 | HLT menu / process | `75e33` / `HLTX` |
 | Aging customization | `customise_aging_1000` |
 
-The release's [recipe for 14X inputs](https://github.com/cms-sw/cmssw/blob/CMSSW_20_1_0_pre5/DPGAnalysis/Phase2L1TNanoAOD/README.md)
+The release's [recipe for 14X inputs](https://github.com/cms-sw/cmssw/blob/CMSSW_17_0_0/DPGAnalysis/Phase2L1TNanoAOD/README.md)
 specifies D110, this era, T35 conditions and the aging customization for
 Phase2Spring24. Its L1/NanoAOD steps are not part of this ID extraction path.
-The [geometry registry](https://github.com/cms-sw/cmssw/blob/CMSSW_20_1_0_pre5/Configuration/StandardSequences/python/GeometryConf.py)
-retains D110; the [geometry description](https://github.com/cms-sw/cmssw/blob/CMSSW_20_1_0_pre5/Configuration/Geometry/README.md)
+The [geometry registry](https://github.com/cms-sw/cmssw/blob/CMSSW_17_0_0/Configuration/StandardSequences/python/GeometryConf.py)
+retains D110; the [geometry description](https://github.com/cms-sw/cmssw/blob/CMSSW_17_0_0/Configuration/Geometry/README.md)
 identifies its tracker as T35.
 
-The [autoCond base](https://github.com/cms-sw/cmssw/blob/CMSSW_20_1_0_pre5/Configuration/AlCa/python/autoCond.py)
-is `200X_mcRun4_realistic_v1`, with tracker-specific overrides from
-[autoCondPhase2](https://github.com/cms-sw/cmssw/blob/CMSSW_20_1_0_pre5/Configuration/AlCa/python/autoCondPhase2.py).
+The [autoCond base](https://github.com/cms-sw/cmssw/blob/CMSSW_17_0_0/Configuration/AlCa/python/autoCond.py)
+is `170X_mcRun4_realistic_v1`, with tracker-specific overrides from
+[autoCondPhase2](https://github.com/cms-sw/cmssw/blob/CMSSW_17_0_0/Configuration/AlCa/python/autoCondPhase2.py).
 Use the complete `auto:phase2_realistic_T35` setting: the base tag alone omits
 those overrides. The worker records the resolved tag and `toGet` entries.
 
@@ -49,13 +67,13 @@ name's 140X tag does not identify its exact producer patch release.
 conditions, geometry, era and steps (`L1,L1TrackTrigger,L1P2GT,HLT:75e33`). The
 generated L1/HLT schedule is retained. An additional unconditional path from
 `cmssw.replay.sequence` supplies every configured feature. It uses the release's
-[unseeded photon producers](https://github.com/cms-sw/cmssw/blob/CMSSW_20_1_0_pre5/HLTrigger/Configuration/python/HLT_75e33/sequences/HLTPhoton108EBTightIDTightIsoUnseededSequence_cfi.py),
+[unseeded photon producers](https://github.com/cms-sw/cmssw/blob/CMSSW_17_0_0/HLTrigger/Configuration/python/HLT_75e33/sequences/HLTPhoton108EBTightIDTightIsoUnseededSequence_cfi.py),
 plus R9 and track isolation. This additional path rejects EDFilter modules;
 ntupling is not conditional on any trigger decision. Zero-candidate events are
 retained. Track isolation requires the
-[HLT tracking sequence](https://github.com/cms-sw/cmssw/blob/CMSSW_20_1_0_pre5/HLTrigger/Configuration/python/HLT_75e33/sequences/HLTTrackingSequence_cfi.py).
+[HLT tracking sequence](https://github.com/cms-sw/cmssw/blob/CMSSW_17_0_0/HLTrigger/Configuration/python/HLT_75e33/sequences/HLTTrackingSequence_cfi.py).
 
-The default [ECAL supercluster producer](https://github.com/cms-sw/cmssw/blob/CMSSW_20_1_0_pre5/HLTrigger/Configuration/python/HLT_75e33/modules/hltParticleFlowSuperClusterECALUnseeded_cfi.py)
+The default [ECAL supercluster producer](https://github.com/cms-sw/cmssw/blob/CMSSW_17_0_0/HLTrigger/Configuration/python/HLT_75e33/modules/hltParticleFlowSuperClusterECALUnseeded_cfi.py)
 has `thresh_SCEt = 10.0`. The YAML overrides this to 0.0 before the 5 GeV analysis
 selection in the ntuplizer. Other clustering thresholds remain those of the
 release. This is an inclusive ID study, not a measurement of the original path's rate.
@@ -91,10 +109,10 @@ these named variables with `hasVar` checks, including
 | `r9` | `hltEgammaR9Unseeded` (empty instance) | Standard e3x3 / raw supercluster energy |
 | `track_iso` | `hltEgammaHollowTrackIsoUnseeded` | Scalar track-pT isolation from `hltGeneralTracks` |
 
-The [cluster-shape implementation](https://github.com/cms-sw/cmssw/blob/CMSSW_20_1_0_pre5/RecoEgamma/EgammaHLTProducers/plugins/EgammaHLTClusterShapeProducer.cc)
-defines the shape instances. The [R9 implementation](https://github.com/cms-sw/cmssw/blob/CMSSW_20_1_0_pre5/RecoEgamma/EgammaHLTProducers/plugins/EgammaHLTR9IDProducer.cc)
+The [cluster-shape implementation](https://github.com/cms-sw/cmssw/blob/CMSSW_17_0_0/RecoEgamma/EgammaHLTProducers/plugins/EgammaHLTClusterShapeProducer.cc)
+defines the shape instances. The [R9 implementation](https://github.com/cms-sw/cmssw/blob/CMSSW_17_0_0/RecoEgamma/EgammaHLTProducers/plugins/EgammaHLTR9IDProducer.cc)
 also supplies `r95x5`, a different instance from the selected standard R9.
-The [HCAL producer](https://github.com/cms-sw/cmssw/blob/CMSSW_20_1_0_pre5/RecoEgamma/EgammaHLTProducers/plugins/EgammaHLTHcalVarProducerFromRecHit.cc)
+The [HCAL producer](https://github.com/cms-sw/cmssw/blob/CMSSW_17_0_0/RecoEgamma/EgammaHLTProducers/plugins/EgammaHLTHcalVarProducerFromRecHit.cc)
 stores H, despite its label containing `HoverE`.
 `ntuplizer.divide_by_candidate_energy: [hoe]` supplies the division explicitly.
 Nonpositive or nonfinite normalization energy fails event processing.
@@ -113,9 +131,9 @@ direction. Generator fiducial flags and unmatched generators are retained.
 No prompt impact-parameter or pixel-match selection is imposed. Plotting uses
 the stored match fields and does not repeat matching.
 
-The [ECAL isolation config](https://github.com/cms-sw/cmssw/blob/CMSSW_20_1_0_pre5/HLTrigger/Configuration/python/HLT_75e33/modules/hltEgammaEcalPFClusterIsoUnseeded_cfi.py),
-[HCAL isolation config](https://github.com/cms-sw/cmssw/blob/CMSSW_20_1_0_pre5/HLTrigger/Configuration/python/HLT_75e33/modules/hltEgammaHcalPFClusterIsoUnseeded_cfi.py),
-and [track isolation config](https://github.com/cms-sw/cmssw/blob/CMSSW_20_1_0_pre5/HLTrigger/Configuration/python/HLT_75e33/modules/hltEgammaHollowTrackIsoUnseeded_cfi.py)
+The [ECAL isolation config](https://github.com/cms-sw/cmssw/blob/CMSSW_17_0_0/HLTrigger/Configuration/python/HLT_75e33/modules/hltEgammaEcalPFClusterIsoUnseeded_cfi.py),
+[HCAL isolation config](https://github.com/cms-sw/cmssw/blob/CMSSW_17_0_0/HLTrigger/Configuration/python/HLT_75e33/modules/hltEgammaHcalPFClusterIsoUnseeded_cfi.py),
+and [track isolation config](https://github.com/cms-sw/cmssw/blob/CMSSW_17_0_0/HLTrigger/Configuration/python/HLT_75e33/modules/hltEgammaHollowTrackIsoUnseeded_cfi.py)
 provide the cones, thresholds and footprint rules. These definitions must stay
 consistent between training and inference. Equivalence to every original slide
 observable has not been established.
@@ -143,11 +161,11 @@ Inspect these artifacts after the README's local test:
 A clean local run checks the exercised file and events. Compare multiplicities,
 feature distributions, matching and prompt/LLP efficiencies before interpreting
 a release change. Require a Condor pilot with ROOT, provenance and receipt on EOS
-before full production. A reported lxplus build on 2026-11-18 compiled and
-registered `EGMNtuplizer` in CMSSW_20_1_0_pre5 with el9_amd64_gcc14;
-`edmPluginHelp` loaded `pluginDisplacedEGMNtuplizerPlugins.so`. That build predates
-the addition of `fillDescriptions()`, which still needs a rebuild in CMSSW.
-Processing the configured 140X samples remains unvalidated.
+before full production. The 20_1_0_pre5 build and plugin registration succeeded,
+but the GMSB local test failed during input-file initialization as described
+above. The 17_0_0 profile still requires a plugin build, a successful generated
+job shell for each sample, and a Condor pilot. No 17_0_0 sample-processing or EOS
+validation result is recorded here.
 
 ## Other input profiles
 

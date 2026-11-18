@@ -1,7 +1,8 @@
-# Unvalidated Phase2Spring24 candidate; no successful 140X sample run is recorded.
+# Phase2Spring24 profile; full sample processing still requires a local test.
+# CMSSW 20_X breaks legacy non-RAW schemas; use the pre-transition 17_X release.
 # Source definitions are listed in docs/cmssw.md.
 # Export EGM_CMSSW_BASE, EGM_EOS and X509_USER_PROXY before preparing jobs.
-campaign: phase2_barrel_201pre5_ntuple_v2
+campaign: phase2_barrel_1700_ntuple_v2
 storage:
   eos: ${EGM_EOS}
   redirector: root://cms-xrd-global.cern.ch/
@@ -9,8 +10,8 @@ cmssw:
   # Build once with cmsrel/cmsenv/scram b, then reuse this area locally and on Condor.
   runtime: prebuilt  # Set scratch only when a per-worker build is explicitly wanted.
   base: ${EGM_CMSSW_BASE}
-  release: CMSSW_20_1_0_pre5
-  scram_arch: el9_amd64_gcc14
+  release: CMSSW_17_0_0
+  scram_arch: el9_amd64_gcc13
   cmsset_default: /cvmfs/cms.cern.ch/cmsset_default.sh
   build_jobs: 2  # Used only by runtime: scratch.
   # existing: consume persisted HLT candidates/maps; rerun: run the pset below first.
