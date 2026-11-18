@@ -25,7 +25,7 @@ Use a new demo output directory for each run.
 - Obtain one exact dataset/file for each enabled sample and its campaign recipe.
 - Start from the pinned release, conditions and HLT products in production YAML.
   Set EGM_CMSSW_BASE and EGM_EOS, then verify the profile against input provenance.
-- Create the CMSSW area with cmsrel, install the package and run scram b once.
+- Create the CMSSW area with cmsrel, clone into its src directory and run scram b.
   Set runtime: prebuilt and base in YAML; keep the shared area unchanged in jobs.
 - Ensure the signal ancestry survives the chosen generator collection.
 - Compile the plugin and run every sample's local test on lxplus.

@@ -23,23 +23,22 @@ In a fresh shell:
 ```bash
 source /cvmfs/cms.cern.ch/cmsset_default.sh
 export SCRAM_ARCH=el9_amd64_gcc14
-mkdir -p "$HOME/cmssw"
-cd "$HOME/cmssw"
+export EGM_WORKDIR=/absolute/path/to/workdir
+mkdir -p "$EGM_WORKDIR"
+cd "$EGM_WORKDIR"
 cmsrel CMSSW_20_1_0_pre5
 cd CMSSW_20_1_0_pre5/src
 cmsenv
-git clone https://github.com/tihsu99/Displaced_EGM_HLT.git "$HOME/cmssw/Displaced_EGM_HLT"
-mkdir -p DisplacedEGM
-cp -R "$HOME/cmssw/Displaced_EGM_HLT/cmssw/DisplacedEGM/Ntuplizer" DisplacedEGM/
+git clone https://github.com/tihsu99/Displaced_EGM_HLT.git
 scram b -j 8
 edmPluginHelp -p EGMNtuplizer
 ```
 
-The checkout lives beside the CMSSW area; the compiled package is installed at
-`src/DisplacedEGM/Ntuplizer`. The last command must find `EGMNtuplizer`.
-Keep the compiled area accessible at
-this same path from Condor workers. After changing the C++ package, synchronize
-its files into `src/DisplacedEGM/Ntuplizer`, rebuild, and prepare a new farm.
+Set `EGM_WORKDIR` to your working directory. The clone itself provides the CMSSW
+package at `src/Displaced_EGM_HLT/Ntuplizer`; `scram b` builds it in place.
+The last command must find `EGMNtuplizer`. Keep the compiled area accessible at
+the same path from Condor workers. After editing `Ntuplizer/plugins/EGMNtuplizer.cc`,
+run `scram b -j 8` in that CMSSW area and prepare a new farm.
 
 ## 2. Activate analysis tools and set the output location
 
@@ -47,8 +46,9 @@ Open a **second fresh shell**, without `cmsenv`:
 
 ```bash
 source /cvmfs/cms.cern.ch/cmsset_default.sh
-export EGM_CMSSW_BASE="$HOME/cmssw/CMSSW_20_1_0_pre5"
-cd "$HOME/cmssw/Displaced_EGM_HLT"
+export EGM_WORKDIR=/absolute/path/to/workdir
+export EGM_CMSSW_BASE="$EGM_WORKDIR/CMSSW_20_1_0_pre5"
+cd "$EGM_CMSSW_BASE/src/Displaced_EGM_HLT"
 source env.sh
 voms-proxy-init --voms cms --valid 192:00
 export X509_USER_PROXY=$(voms-proxy-info --path)

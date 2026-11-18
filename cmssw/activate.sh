@@ -10,7 +10,7 @@ case "$4" in
     ;;
   scratch)
     scram project CMSSW "$3"
-    cp -R "$work_dir/cmssw/DisplacedEGM" "$3/src/"
+    cp -R "$work_dir/cmssw/Displaced_EGM_HLT" "$3/src/"
     cd "$3/src"
     ;;
   *)

@@ -98,6 +98,11 @@ observable has not been established.
 ## Runtime and validation
 
 The `prebuilt` runtime compiles once with `cmsrel`, `cmsenv` and `scram b`.
+Clone the repository directly into `$CMSSW_BASE/src/Displaced_EGM_HLT`.
+`Ntuplizer/plugins/BuildFile.xml` is then at the standard
+`Subsystem/Package/plugins` depth described in the
+[CMS coding rules](https://cms-sw.github.io/cms_coding_rules.html).
+SCRAM builds the checked-out source in place.
 Workers activate that area with `scram runtime -sh` and return to scratch.
 `prepare` snapshots the ntuplizer source/library checksums; changes invalidate
 the farm and local-test receipts. Keep custom CMSSW dependencies unchanged too.

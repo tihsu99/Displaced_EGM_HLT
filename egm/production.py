@@ -47,7 +47,7 @@ def prepare(config, farm, selected=None, max_files=None):
         raise ValueError("max-files must be positive")
     if cfg["cmssw"]["runtime"] == "prebuilt":
         cfg["cmssw"]["base"] = str(Path(cfg["cmssw"]["base"]).resolve())
-        cfg["cmssw"]["prebuilt_snapshot"] = prebuilt_snapshot(cfg["cmssw"], ROOT / "cmssw" / PACKAGE)
+        cfg["cmssw"]["prebuilt_snapshot"] = prebuilt_snapshot(cfg["cmssw"], ROOT / PACKAGE.name)
     farm = Path(farm).resolve()
     if str(farm).startswith("/eos/"):
         raise ValueError("Condor submission metadata must be on /tmp, AFS, or another submit-host filesystem")
@@ -66,11 +66,13 @@ def prepare(config, farm, selected=None, max_files=None):
     (farm / "jobs").mkdir()
     (farm / "logs").mkdir()
     with tarfile.open(farm / "source.tar.gz", "w:gz") as archive:
-        for path in sorted((ROOT / "cmssw").rglob("*")):
-            if path.is_file() and path.suffix in {".py", ".cc", ".h", ".xml", ".sh"}:
-                if replay and path == ROOT / "cmssw/replay_cfg.py":
-                    continue
-                archive.add(path, arcname=str(path.relative_to(ROOT)))
+        for source, destination in [(ROOT / "cmssw", Path("cmssw")),
+                                    (ROOT / PACKAGE.name, Path("cmssw") / PACKAGE)]:
+            for path in sorted(source.rglob("*")):
+                if path.is_file() and path.suffix in {".py", ".cc", ".h", ".xml", ".sh"}:
+                    if replay and path == ROOT / "cmssw/replay_cfg.py":
+                        continue
+                    archive.add(path, arcname=str(destination / path.relative_to(source)))
         archive.add(ROOT / "egm/cmssw.py", arcname="cmssw/runtime_checks.py")
         if replay:
             archive.add(replay, arcname="cmssw/replay_cfg.py")

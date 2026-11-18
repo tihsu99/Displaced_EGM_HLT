@@ -3,7 +3,7 @@ import hashlib
 from pathlib import Path
 
 
-PACKAGE = Path("DisplacedEGM/Ntuplizer")
+PACKAGE = Path("Displaced_EGM_HLT/Ntuplizer")
 LIBRARY = "libDisplacedEGMNtuplizerPlugins.so"
 
 
@@ -32,12 +32,12 @@ def prebuilt_snapshot(config, source_package):
     installed_paths = sorted(p.relative_to(installed) for p in installed.rglob("*")
                              if p.is_file() and p.suffix in {".cc", ".h", ".xml", ".py"})
     if not paths or paths != installed_paths:
-        raise ValueError("Installed CMSSW package differs from the checkout; synchronize it and rebuild")
+        raise ValueError("Installed CMSSW package differs from the source snapshot; rebuild and prepare a new farm")
     hashes = {}
     for relative in paths:
         actual = installed / relative
         if checksum(actual) != checksum(source_package / relative):
-            raise ValueError(f"CMSSW source differs from the farm: {relative}; synchronize and rebuild")
+            raise ValueError(f"CMSSW source differs from the farm: {relative}; rebuild and prepare a new farm")
         if actual.stat().st_mtime_ns > binary.stat().st_mtime_ns:
             raise ValueError(f"CMSSW source is newer than the plugin: {relative}; run scram b")
         hashes[str(relative)] = checksum(actual)
