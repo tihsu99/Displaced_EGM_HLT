@@ -18,6 +18,22 @@ def run(args, **kwargs):
     return subprocess.run(list(map(str, args)), check=True, **kwargs)
 
 
+def run_logged(args, log_path, stream=False, **kwargs):
+    with open(log_path, "w", buffering=1) as log:
+        if not stream:
+            return run(args, stdout=log, stderr=subprocess.STDOUT, **kwargs)
+        args = list(map(str, args))
+        print("Running:", " ".join(args), flush=True)
+        with subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              text=True, errors="replace", bufsize=1, **kwargs) as process:
+            for line in process.stdout:
+                log.write(line)
+                print(line, end="", flush=True)
+            status = process.wait()
+            if status:
+                raise subprocess.CalledProcessError(status, args)
+
+
 def sha256(path):
     h = hashlib.sha256()
     with open(path, "rb") as source:
@@ -84,15 +100,16 @@ def main():
     (scratch / "resolved.json").write_text(json.dumps(resolved, indent=2))
     env = {k: os.environ[k] for k in ["HOME", "USER", "LOGNAME", "X509_USER_PROXY", "X509_CERT_DIR", "KRB5CCNAME"] if k in os.environ}
     env.update(PATH="/usr/bin:/bin", TMPDIR=str(scratch), XDG_CACHE_HOME=str(scratch / "cache"),
-               PYTHONNOUSERSITE="1", PYTHONDONTWRITEBYTECODE="1")
+               PYTHONNOUSERSITE="1", PYTHONDONTWRITEBYTECODE="1", PYTHONUNBUFFERED="1")
+    print("LOG", scratch / "worker.log", flush=True)
     try:
-        with open(scratch / "worker.log", "w") as log:
-            run(["/bin/bash", scratch / "scripts/activate.sh", cmssw["cmsset_default"], cmssw["scram_arch"],
-                 cmssw["release"], cmssw["runtime"], cmssw.get("base") or "", cmssw["build_jobs"]],
-                cwd=scratch, env=env, stdout=log, stderr=subprocess.STDOUT)
+        run_logged(["/bin/bash", scratch / "scripts/activate.sh", cmssw["cmsset_default"], cmssw["scram_arch"],
+                    cmssw["release"], cmssw["runtime"], cmssw.get("base") or "", cmssw["build_jobs"]],
+                   scratch / "worker.log", stream=local, cwd=scratch, env=env)
     except subprocess.CalledProcessError:
         # Condor may remove scratch after failure; preserve the diagnostic tail in stderr.
-        print("\n".join((scratch / "worker.log").read_text(errors="replace").splitlines()[-100:]), file=sys.stderr)
+        if not local:
+            print("\n".join((scratch / "worker.log").read_text(errors="replace").splitlines()[-100:]), file=sys.stderr)
         raise
     if cmssw["runtime"] == "prebuilt":
         check_prebuilt(cmssw, scratch / PACKAGE.name, cmssw["prebuilt_snapshot"])

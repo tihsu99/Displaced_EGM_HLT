@@ -2,8 +2,10 @@
 # The worker runs this in scratch, with all configured values passed as arguments.
 set -eo pipefail
 work_dir=$PWD
+echo "[stage] Sourcing CMS setup: $1"
 source "$1"
 export SCRAM_ARCH="$2"
+echo "[stage] Activating $3 ($SCRAM_ARCH, $4)"
 case "$4" in
   prebuilt)
     cd "$5/src"
@@ -26,7 +28,9 @@ if [ "$CMSSW_VERSION" != "$3" ] || [ "$SCRAM_ARCH" != "$2" ]; then
   exit 2
 fi
 if [ "$4" = scratch ]; then
+  echo "[stage] Building the CMSSW package"
   scram b -j "$6"
 fi
 cd "$work_dir"
-exec python3 scripts/run_job.py
+echo "[stage] CMSSW ready; starting the job in $work_dir"
+exec python3 -u scripts/run_job.py

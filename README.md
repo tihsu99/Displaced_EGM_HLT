@@ -110,6 +110,12 @@ compiled library, and requires a matching successful test for every sample.
 After the pilot passes, use a new campaign/farm and omit `--max-files 1` for full
 production. Never overwrite an existing campaign.
 
+Local tests stream CMSSW output to the terminal and retain the same output in
+the printed `LOG` path (`<scratch>/worker.log`). Stage messages identify CMS
+setup, input inspection, `cmsRun` and ntuple validation. For a job already
+running, use `tail -f <scratch>/worker.log` on the same lxplus host. Condor jobs
+keep the full log in scratch and print its last 100 lines on processing failure.
+
 Each worker activates the prebuilt CMSSW area and reads its `root://` inputs
 directly. Reconstruction, matching and ntuple writing run in one `cmsRun`;
 the ntuple, generated configurations and logs stay in `_CONDOR_SCRATCH_DIR`.

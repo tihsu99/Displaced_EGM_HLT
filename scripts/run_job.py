@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import subprocess
 
+print("[stage] Loading ROOT", flush=True)
 import ROOT
 
 job = json.loads(Path("resolved.json").read_text())
@@ -13,6 +14,7 @@ if job["cmssw"]["runtime"] == "prebuilt" and Path(os.environ.get("CMSSW_BASE", "
     raise RuntimeError("Active CMSSW_BASE differs from the configured prebuilt area")
 files = job["input_files"]
 for command, output in [("edmProvDump", "input_provenance.txt"), ("edmDumpEventContent", "event_content.txt")]:
+    print(f"[stage] {command} on the first input -> {output}", flush=True)
     with open(output, "w") as handle:
         subprocess.run([command, files[0]], stdout=handle, check=True)
 if job["cmssw"]["mode"] == "rerun":
@@ -22,9 +24,12 @@ else:
 args = [pset, "job=resolved.json", "inputFiles=" + ",".join(files),
         "outputFile=ntuple.root", f"maxEvents={job['max_events']}"]
 if job["cmssw"]["mode"] == "existing":
+    print("[stage] Dumping the ntuple configuration", flush=True)
     with open("ntuple_config.py", "w") as output:
         subprocess.run(["edmConfigDump", *args], stdout=output, check=True)
+print(f"[stage] cmsRun: mode={job['cmssw']['mode']}, maxEvents={job['max_events']}", flush=True)
 subprocess.run(["cmsRun", "-j", "FrameworkJobReport.xml", *args], check=True)
+print("[stage] cmsRun completed; checking ntuple.root", flush=True)
 source = ROOT.TFile.Open("ntuple.root")
 if not source or source.IsZombie() or source.TestBit(ROOT.TFile.kRecovered):
     raise RuntimeError("Output ROOT file is invalid or recovered")
@@ -65,3 +70,4 @@ if summary["candidates"] == 0:
     raise RuntimeError("No candidates; increase the smoke event count or inspect the HLT products")
 source.Close()
 Path("inspection.json").write_text(json.dumps(summary, indent=2))
+print(f"[stage] Ntuple validated: {summary['events']} events, {summary['candidates']} candidates", flush=True)
