@@ -26,6 +26,7 @@ def parser():
     local = commands.add_parser("local-test", help="Run the production worker locally on one file per sample")
     local.add_argument("--farm", required=True)
     local.add_argument("--sample")
+    local.add_argument("--n", type=int, help="Event limit per local job; overrides production.local_test_events")
     submit = commands.add_parser("submit", help="Require matching local tests, then submit to Condor")
     submit.add_argument("--farm", required=True)
     submit.add_argument("--dry-run", action="store_true")
@@ -80,7 +81,7 @@ def main(argv=None):
             prepare(args.config, args.farm, args.samples, args.max_files)
         elif args.command == "local-test":
             from .production import local_test
-            local_test(args.farm, args.sample)
+            local_test(args.farm, args.sample, args.n)
         elif args.command == "submit":
             from .production import submit
             submit(args.farm, args.dry_run)

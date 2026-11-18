@@ -86,15 +86,16 @@ through `EGM_EOS`. The photon defaults are pT > 5 GeV and |etaSC| < 1.44.
 photon propagation to the barrel ECAL. Electron matching requires its own
 validated prescription.
 
-Start with one file per enabled sample:
+From the repository root, create the farm under `./farms/` and start with one
+file per enabled sample:
 
 ```bash
-export EGM_FARM="$HOME/egm-farms/phase2_barrel_1700_ntuple_v2"
+export EGM_FARM="$PWD/farms/phase2_barrel_1700_ntuple_v2"
 python3 -m egm condor config/production.yaml --max-files 1 --farm "$EGM_FARM" --dry-run
 
-# Test the generated shell for the first file of each enabled sample.
+# Test at most 10 events from the first file of each enabled sample.
 for job in "$EGM_FARM"/jobs/*_00000.sh; do
-    bash "$job" --local || break
+    bash "$job" --local --n 10 || break
 done
 
 # Submit only after every local test prints LOCAL TEST PASSED.
@@ -103,18 +104,28 @@ condor_q "$USER"
 ```
 
 `condor --dry-run` creates `jobs/<sample>_<index>.sh`, job configuration and
-`jobs.sub`; it does not execute or submit jobs. `bash job.sh --local` runs 100
-events without uploading data. Condor executes the same shell without `--local`
+`jobs.sub`; it does not execute or submit jobs. `bash job.sh --local --n 10`
+processes at most 10 events from the first input file without uploading data.
+Without `--n`, local jobs use `production.local_test_events` (100 by default).
+The same override is available as `python3 -m egm local-test --farm "$EGM_FARM" --n 10`.
+The worker prints the effective event limit and records it in the test receipt.
+`--n` must be positive and requires local mode; startup and file-opening time are
+not bounded by the event count. Condor executes the same shell without `--local`
 for production. Submission checks the frozen source, scripts, configuration and
 compiled library, and requires a matching successful test for every sample.
 After the pilot passes, use a new campaign/farm and omit `--max-files 1` for full
 production. Never overwrite an existing campaign.
 
 Local tests stream CMSSW output to the terminal and retain the same output in
-the printed `LOG` path (`<scratch>/worker.log`). Stage messages identify CMS
+the printed `LOG` path (`<scratch>/worker.log`). Preparation prints the `SOURCE`
+checkout; each job prints its `WORKER` path and `MODE`. Stage messages identify CMS
 setup, input inspection, `cmsRun` and ntuple validation. For a job already
 running, use `tail -f <scratch>/worker.log` on the same lxplus host. Condor jobs
 keep the full log in scratch and print its last 100 lines on processing failure.
+Each farm contains frozen copies of the worker and source bundle. After updating
+the checkout, choose a new `EGM_FARM` and repeat `--dry-run`; updating the checkout
+alone does not update an existing farm. If preparation fails, stop before the
+local-test loop so that it does not run an older farm.
 
 Each worker activates the prebuilt CMSSW area and reads its `root://` inputs
 directly. Reconstruction, matching and ntuple writing run in one `cmsRun`;

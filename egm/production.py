@@ -54,6 +54,7 @@ def resolve_files(sample, redirector):
 
 
 def prepare(config, farm, selected=None, max_files=None):
+    print("SOURCE", ROOT, flush=True)
     cfg = read_yaml(config)
     samples = validate_production(cfg)
     if selected:
@@ -193,7 +194,9 @@ def check_farm_runtime(farm, manifest):
             check_prebuilt(config, package, config["prebuilt_snapshot"])
 
 
-def local_test(farm, sample=None):
+def local_test(farm, sample=None, n=None):
+    if n is not None and n <= 0:
+        raise ValueError("--n must be a positive event count")
     farm, manifest = read_farm(farm)
     check_farm_runtime(farm, manifest)
     selected = {}
@@ -202,8 +205,9 @@ def local_test(farm, sample=None):
             selected.setdefault(job["sample"], job)
     if not selected:
         raise ValueError(f"No jobs for sample: {sample}")
+    options = ["--local"] + (["--n", str(n)] if n is not None else [])
     for job in selected.values():
-        subprocess.run(["/bin/bash", str(farm / "jobs" / (job["id"] + ".sh")), "--local"], cwd=farm, check=True)
+        subprocess.run(["/bin/bash", str(farm / "jobs" / (job["id"] + ".sh")), *options], cwd=farm, check=True)
 
 
 def submit(farm, dry_run=False):

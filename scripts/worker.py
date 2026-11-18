@@ -1,4 +1,5 @@
 """Standard-library worker: scratch -> CMSSW -> checked ROOT -> EOS -> receipt."""
+import argparse
 import hashlib
 import json
 import os
@@ -65,10 +66,27 @@ def upload(source, url, attempts):
         raise
 
 
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("job", type=Path)
+    parser.add_argument("bundle", type=Path)
+    parser.add_argument("--local", action="store_true", help="Test the first input file without EOS uploads")
+    parser.add_argument("--n", type=int, help="Positive event limit for --local; defaults to production.local_test_events")
+    args = parser.parse_args(argv)
+    if args.n is not None:
+        if not args.local:
+            parser.error("--n requires --local; production uses the frozen production.max_events")
+        if args.n <= 0:
+            parser.error("--n must be a positive event count")
+    return args
+
+
 def main():
-    job_path = Path(sys.argv[1]).resolve()
-    bundle = Path(sys.argv[2]).resolve()
-    local = len(sys.argv) > 3 and sys.argv[3] == "--local"
+    args = parse_args()
+    job_path = args.job.resolve()
+    bundle = args.bundle.resolve()
+    local = args.local
+    print("WORKER", Path(__file__).resolve(), "MODE", "local (live output)" if local else "condor", flush=True)
     job = json.loads(job_path.read_text())
     if sha256(bundle) != job["bundle_sha256"]:
         raise RuntimeError("Source snapshot changed")
@@ -89,6 +107,10 @@ def main():
     files = job["files"]
     if local:
         files = files[:1]
+    max_events = job["production"]["local_test_events"] if local else job["production"]["max_events"]
+    if args.n is not None:
+        max_events = args.n
+    print(f"EVENT LIMIT {max_events}; INPUT FILES {len(files)}", flush=True)
     if job["production"]["stage_inputs"]:
         staged = []
         for index, source in enumerate(files):
@@ -96,7 +118,7 @@ def main():
             run(["xrdcp", "--nopbar", "--cksum", "adler32", source, target])
             staged.append("file:" + str(target))
         files = staged
-    resolved = dict(job, input_files=files, max_events=job["production"]["local_test_events"] if local else job["production"]["max_events"])
+    resolved = dict(job, input_files=files, max_events=max_events)
     (scratch / "resolved.json").write_text(json.dumps(resolved, indent=2))
     env = {k: os.environ[k] for k in ["HOME", "USER", "LOGNAME", "X509_USER_PROXY", "X509_CERT_DIR", "KRB5CCNAME"] if k in os.environ}
     env.update(PATH="/usr/bin:/bin", TMPDIR=str(scratch), XDG_CACHE_HOME=str(scratch / "cache"),
@@ -114,7 +136,8 @@ def main():
     if cmssw["runtime"] == "prebuilt":
         check_prebuilt(cmssw, scratch / PACKAGE.name, cmssw["prebuilt_snapshot"])
     summary = json.loads((scratch / "inspection.json").read_text())
-    receipt = dict(job, **summary, local_test=local, root_sha256=sha256(scratch / "ntuple.root"))
+    receipt = dict(job, **summary, local_test=local, max_events=max_events,
+                   input_files=files, root_sha256=sha256(scratch / "ntuple.root"))
     (scratch / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
     if local:
         shutil.copy2(scratch / "receipt.json", job_path.parent / (job_path.stem + ".local-test.json"))
