@@ -6,6 +6,8 @@ from FWCore.ParameterSet.VarParsing import VarParsing
 from Displaced_EGM_HLT.Ntuplizer.ntuple_tools import add_ntuplizer
 
 options = VarParsing("analysis")
+# Keep the filename shared with the worker; tagString adds _numEventN for trial runs.
+options.setType("outputFile", VarParsing.varType.string)
 options.register("job", "job.json", VarParsing.multiplicity.singleton, VarParsing.varType.string, "Resolved job JSON")
 options.parseArguments()
 with open(options.job) as source:

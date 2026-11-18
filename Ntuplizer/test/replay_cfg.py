@@ -12,6 +12,8 @@ from Displaced_EGM_HLT.Ntuplizer.replay_tools import configure_replay, driver_co
 from Displaced_EGM_HLT.Ntuplizer.ntuple_tools import add_ntuplizer
 
 options = VarParsing("analysis")
+# Keep the filename shared with the worker; tagString adds _numEventN for trial runs.
+options.setType("outputFile", VarParsing.varType.string)
 options.register("job", "resolved.json", VarParsing.multiplicity.singleton,
                  VarParsing.varType.string, "Resolved job JSON")
 options.parseArguments()

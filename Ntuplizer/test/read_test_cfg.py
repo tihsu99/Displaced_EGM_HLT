@@ -3,6 +3,8 @@ import FWCore.ParameterSet.Config as cms
 from FWCore.ParameterSet.VarParsing import VarParsing
 
 options = VarParsing("analysis")
+# Preserve the requested filename when reading a limited number of events.
+options.setType("outputFile", VarParsing.varType.string)
 options.maxEvents = 10
 options.outputFile = "read_test.root"
 options.parseArguments()
