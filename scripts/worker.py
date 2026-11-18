@@ -66,10 +66,10 @@ def main():
         archive.extractall(scratch)
     shutil.copy2(job_path, scratch / "job.json")
     cmssw = job["cmssw"]
-    sys.path.insert(0, str(scratch / "cmssw"))
+    sys.path.insert(0, str(scratch / "scripts"))
     from runtime_checks import PACKAGE, check_prebuilt
     if cmssw["runtime"] == "prebuilt":
-        check_prebuilt(cmssw, scratch / "cmssw" / PACKAGE, cmssw["prebuilt_snapshot"])
+        check_prebuilt(cmssw, scratch / PACKAGE.name, cmssw["prebuilt_snapshot"])
     files = job["files"]
     if local:
         files = files[:1]
@@ -87,7 +87,7 @@ def main():
                PYTHONNOUSERSITE="1", PYTHONDONTWRITEBYTECODE="1")
     try:
         with open(scratch / "worker.log", "w") as log:
-            run(["/bin/bash", scratch / "cmssw/activate.sh", cmssw["cmsset_default"], cmssw["scram_arch"],
+            run(["/bin/bash", scratch / "scripts/activate.sh", cmssw["cmsset_default"], cmssw["scram_arch"],
                  cmssw["release"], cmssw["runtime"], cmssw.get("base") or "", cmssw["build_jobs"]],
                 cwd=scratch, env=env, stdout=log, stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError:
@@ -95,7 +95,7 @@ def main():
         print("\n".join((scratch / "worker.log").read_text(errors="replace").splitlines()[-100:]), file=sys.stderr)
         raise
     if cmssw["runtime"] == "prebuilt":
-        check_prebuilt(cmssw, scratch / "cmssw" / PACKAGE, cmssw["prebuilt_snapshot"])
+        check_prebuilt(cmssw, scratch / PACKAGE.name, cmssw["prebuilt_snapshot"])
     summary = json.loads((scratch / "inspection.json").read_text())
     receipt = dict(job, **summary, local_test=local, root_sha256=sha256(scratch / "ntuple.root"))
     (scratch / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
@@ -107,7 +107,7 @@ def main():
     attempts = job["production"]["stageout_attempts"]
     upload(scratch / "ntuple.root", base, attempts)
     with tarfile.open(scratch / "provenance.tar.gz", "w:gz") as archive:
-        for name in ["worker.log", "resolved.json", "input_provenance.txt", "event_content.txt", "ntuple_config.py", "FrameworkJobReport.xml", "ReplayJobReport.xml", "inspection.json", "cmssw/replay_cfg.py", "cmssw/replay_tools.py", "replay_base.py", "replay_config.py", "replay_metadata.json"]:
+        for name in ["worker.log", "resolved.json", "input_provenance.txt", "event_content.txt", "ntuple_config.py", "FrameworkJobReport.xml", "inspection.json", "Ntuplizer/test/replay_cfg.py", "Ntuplizer/python/replay_tools.py", "Ntuplizer/python/ntuple_tools.py", "scripts/custom_replay_cfg.py", "replay_base.py", "replay_config.py", "replay_metadata.json"]:
             path = scratch / name
             if path.exists():
                 archive.add(path, arcname=name)

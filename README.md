@@ -1,20 +1,17 @@
 # Displaced EGM HLT
 
-Develop cut-based and BDT photon IDs for the CMS Phase-2 HLT: reconstruct HLT
-features, produce ntuples on EOS, tune IDs, and evaluate held-out events.
-The default study uses Phase2Spring24 PU200 samples, pT > 5 GeV and |etaSC| < 1.44.
+Produce ROOT ntuples of HLT EGM variables and generator matches, then plot
+signal versus background distributions directly from those ntuples.
 
-The current **unvalidated candidate** is **CMSSW_20_1_0_pre5, el9_amd64_gcc14**,
-selected from the release list checked on 2026-11-18. Compatibility with the
-configured 140X GMSB sample has not been established. The profile uses D110 geometry,
-`Phase2C17I13M9`, `auto:phase2_realistic_T35` and the `75e33` HLT producers.
-The release and producer definitions are source-checked. Choose the working
-release only after the actual sample passes HLT replay and ntuple production
-with a clean exit and validated output; source inspection alone is insufficient.
-See [CMSSW sources and implementation](docs/cmssw.md).
+```text
+sample -> L1/HLT reconstruction -> EgammaObject -> gen matching -> ntuple on EOS
+ntuple -> plot-variables -> signal/background distributions
+```
 
-Run these commands in Bash on lxplus EL9. CMSSW uses `cmsenv`; analysis uses a
-CVMFS LCG view. Run each step only after the previous command succeeds.
+The configured release is **CMSSW_20_1_0_pre5, el9_amd64_gcc14**. Its producers
+have been source-checked; processing the configured 140X samples has **not** been
+runtime-validated. See [CMSSW implementation](docs/cmssw.md) for the source trace.
+Run the following commands in Bash on lxplus EL9.
 
 ## 1. Create the CMSSW area and build the ntuplizer
 
@@ -40,6 +37,17 @@ The last command must find `EGMNtuplizer`. Keep the compiled area accessible at
 the same path from Condor workers. After editing `Ntuplizer/plugins/EGMNtuplizer.cc`,
 run `scram b -j 8` in that CMSSW area and prepare a new farm.
 
+Source layout:
+
+```text
+Ntuplizer/plugins/    C++ ntuplizer
+Ntuplizer/interface/ Generator matching
+Ntuplizer/python/    Shared reconstruction and ntuple configuration
+Ntuplizer/test/      cmsRun entry points
+scripts/             Condor worker and runtime activation
+config/              Sample, production and plotting YAML
+```
+
 ## 2. Activate analysis tools and set the output location
 
 Open a **second fresh shell**, without `cmsenv`:
@@ -53,7 +61,6 @@ source env.sh
 voms-proxy-init --voms cms --valid 192:00
 export X509_USER_PROXY=$(voms-proxy-info --path)
 export EGM_EOS="root://eosuser.cern.ch//eos/user/${USER:0:1}/$USER/displaced_egm"
-export EGM_RESULTS="/eos/user/${USER:0:1}/$USER/displaced_egm/study_v1"
 cp config/production.yaml config/my_production.yaml
 python3 -m egm validate config/my_production.yaml
 ```
@@ -67,129 +74,76 @@ each new production. `EGM_EOS` and `EGM_CMSSW_BASE` are the two site-specific pa
 Its setup path is controlled by `config/environment.sh` or `EGM_LCG_SETUP`.
 If that check fails, stop and select a compatible centrally installed view.
 
-## 3. Run one GMSB file locally
+## 3. Produce ntuples with Condor
 
-Continue in the analysis shell:
+Edit `config/my_production.yaml`: select the enabled samples and set `storage.eos`
+through `EGM_EOS`. The photon defaults are pT > 5 GeV and |etaSC| < 1.44.
+`ntuplizer.matching` controls the generator PDG ID, matching cone and displaced
+photon propagation to the barrel ECAL. Electron matching requires its own
+validated prescription.
 
-```bash
-export EGM_PILOT=/tmp/$USER-egm-pilot-v1
-python3 -m egm prepare config/my_production.yaml --samples gmsb --max-files 1 --farm "$EGM_PILOT"
-python3 -m egm local-test --farm "$EGM_PILOT"
-```
-
-`prepare` resolves the input with DAS and freezes the code, configuration and
-compiled plugin checksums. `local-test` activates CMSSW, stages one file in `/tmp`,
-reruns the configured HLT producers for 100 events, and writes the ntuple. It
-does not submit jobs or upload event data.
-
-Expect `LOCAL TEST PASSED; ROOT and logs: ...`. In that printed scratch directory,
-inspect `worker.log`, `event_content.txt`, `replay_metadata.json`,
-`replay_config.py`, `inspection.json` and `ntuple.root`. A failure stops here;
-the end of `worker.log` is also printed. Successful output must close cleanly and
-contain nonzero event and candidate counts.
-
-The replay schedules feature producers for every event, without L1 or ID filters.
-It lowers the supercluster ET threshold from 10 to 0 GeV; the 5 GeV analysis cut
-is applied later. `hoe` is the HLT hadronic-energy map divided by candidate energy.
-See [feature definitions](docs/cmssw.md#feature-definitions).
-
-## 4. Submit the one-file Condor pilot
+Start with one file per enabled sample:
 
 ```bash
-python3 -m egm submit --farm "$EGM_PILOT" --dry-run
-```
+export EGM_FARM="$HOME/egm-farms/phase2_barrel_201pre5_ntuple_v2"
+python3 -m egm condor config/my_production.yaml --max-files 1 --farm "$EGM_FARM" --dry-run
 
-This prints the submit description. To submit that pilot:
+# Test the generated shell for the first file of each enabled sample.
+for job in "$EGM_FARM"/jobs/*_00000.sh; do
+    bash "$job" --local || break
+done
 
-```bash
-python3 -m egm submit --farm "$EGM_PILOT"
+# Submit only after every local test prints LOCAL TEST PASSED.
+python3 -m egm condor --farm "$EGM_FARM"
 condor_q "$USER"
 ```
 
-Workers run in `_CONDOR_SCRATCH_DIR`. Successful jobs upload the ROOT ntuple and
-provenance archive to EOS, then publish a JSON completion receipt. Check for all
-three files under `phase2_barrel_201pre5_v1/gmsb/` at your EOS destination.
-The pilot processes the whole first file in batch; the local test processes only
-`production.local_test_events`. Neither output represents the complete sample.
+`condor --dry-run` creates `jobs/<sample>_<index>.sh`, job configuration and
+`jobs.sub`; it does not execute or submit jobs. `bash job.sh --local` runs 100
+events without uploading data. Condor executes the same shell without `--local`
+for production. Submission checks the frozen source, scripts, configuration and
+compiled library, and requires a matching successful test for every sample.
+After the pilot passes, use a new campaign/farm and omit `--max-files 1` for full
+production. Never overwrite an existing campaign.
 
-## 5. Produce all enabled samples
+Each worker stages its input in `_CONDOR_SCRATCH_DIR`, activates the prebuilt
+CMSSW area, and runs reconstruction, matching and ntuple writing in one `cmsRun`.
+Only the final ntuple and small job provenance/receipt files are uploaded to
+`storage.eos/<campaign>/<sample>/`. Successful workers remove their scratch area.
+AFS holds code and small submission files. Failed/local jobs retain diagnostics.
 
-Set a new campaign name so full production does not collide with the pilot:
+The ROOT tree `egm/Events` stores kinematics, `s_major`, `s_minor`, shower shapes,
+isolations, generator particles and per-candidate matching fields:
+`matched_gen_index`, `match_dr`, `match_pdg_id`, `match_prompt`, `match_llp`,
+`match_gen_fiducial`. Unmatched objects have index and distance -1.
+`egm/metadata` records the sample, variable sources, matching settings and CMSSW
+configuration. Missing required EGM variables fail the job rather than becoming
+zero. Events with zero accepted objects are retained.
 
-```bash
-python3 - <<'PY'
-from pathlib import Path
-import yaml
-path = Path("config/my_production.yaml")
-config = yaml.safe_load(path.read_text())
-config["campaign"] = "phase2_barrel_201pre5_full_v1"
-path.write_text(yaml.safe_dump(config, sort_keys=False))
-PY
-export EGM_FARM="$HOME/egm-farms/phase2_barrel_201pre5_full_v1"
-python3 -m egm prepare config/my_production.yaml --farm "$EGM_FARM"
-python3 -m egm local-test --farm "$EGM_FARM"
-python3 -m egm submit --farm "$EGM_FARM" --dry-run
-```
+## 4. Plot signal versus background
 
-The local test must pass for every enabled sample. After reviewing the dry run:
-
-```bash
-python3 -m egm submit --farm "$EGM_FARM"
-```
-
-The farm holds small job descriptions, source snapshots and Condor logs. Event
-data and replay intermediates stay in scratch; completed ntuples go to EOS.
-Keep the farm and compiled area unchanged while jobs run. Existing outputs are
-never overwritten. Inspect incomplete output before retrying a failed job.
-
-## 6. Build the dataset, tune IDs and evaluate
-
-After every job has a completion receipt, run from the repository root in the
-analysis environment. Use a batch allocation for full datasets; the automated
-Condor commands above cover ntuple production.
+Once the jobs finish and their completion receipts are present, point the plot
+command at the final ROOT ntuples on mounted EOS:
 
 ```bash
-python3 -m egm dataset --farm "$EGM_FARM" --study config/study.yaml --output "$EGM_RESULTS/dataset"
-python3 -m egm tune-cuts --dataset "$EGM_RESULTS/dataset" --study config/study.yaml --output "$EGM_RESULTS/cuts"
-python3 -m egm tune-bdt --dataset "$EGM_RESULTS/dataset" --study config/study.yaml --output "$EGM_RESULTS/bdt"
-python3 -m egm evaluate --dataset "$EGM_RESULTS/dataset" --study config/study.yaml --cuts "$EGM_RESULTS/cuts/model.json" --bdt "$EGM_RESULTS/bdt/model.json" --output "$EGM_RESULTS/evaluation"
+export EGM_NTUPLES="/eos/user/${USER:0:1}/$USER/displaced_egm/phase2_barrel_201pre5_ntuple_v2"
+python3 -m egm plot-variables --inputs "$EGM_NTUPLES"/*/*.root --config config/plots.yaml --output "$EGM_NTUPLES/plots"
 ```
 
-Expect candidate, generator and event Parquet tables; two `model.json` files;
-and evaluation PNG/PDF plots with JSON metrics. `dataset` verifies the receipts
-and ROOT checksums. Analysis outputs use a mounted EOS path and are first written
-in local temporary storage. Use new output directories for another run.
+Use the mounted path corresponding to your configured `storage.eos`; explicit
+`root://` input URLs also work. Input files are buffered in local temporary
+storage one at a time. The output directory must be new.
 
-The default event split is 60/20/20 for training, validation and testing.
-`config/study.yaml` controls matching, features, cut bounds, BDT parameters,
-working points and plot bins. Tuning loads candidates into memory and limits
-input to two million rows unless `--max-rows` is set explicitly. Cut working points
-are optimized independently and need not be nested. Evaluation reports object
-efficiencies and event acceptance, not a trigger rate in Hz.
+`config/plots.yaml` controls variable names, binning, labels, colors and log axes.
+The command writes PNG/PDF overlays, including `s_major.png` and `s_minor.png`,
+and a `distributions.json` record of bin contents, counts and provenance.
+It reads the stored matching results; no training or intermediate analysis table
+is required.
 
-## 7. Apply an exported ID
-
-```bash
-python3 -m egm apply-id --input "$EGM_RESULTS/dataset/candidates.parquet" --model "$EGM_RESULTS/bdt/model.json" --working-point 0.8 --output "$EGM_RESULTS/applied_bdt"
-```
-
-The result is `predictions.parquet` with scores and ID decisions. Inputs must use
-the same feature definitions and selection as training. Deployment inside an
-HLT filter and latency measurements are separate from this offline workflow.
-
-## Software checks and further reading
-
-For a synthetic end-to-end check in the analysis shell:
-
-```bash
-python3 scripts/check_environment.py --tests
-python3 -m pytest -q
-python3 -m egm demo --output /tmp/$USER-egm-demo
-```
-
-Synthetic checks exercise analysis and workflow logic. A CMSSW build,
-sample-level replay, Condor pilot and EOS receipt are required before production.
-
-- [CMSSW sources and implementation](docs/cmssw.md)
-- [Physics definitions and limits](docs/physics.md)
-- [Validation checklist](docs/handoff.md)
+GMSB signal uses LLP-matched photons; H to gamma gamma uses prompt-matched photons.
+Both require the stored generator fiducial flag. Background uses all selected
+HLT candidates. Each sample is normalized separately with absolute generator
+weights; overlapping QCD samples are not added together. Underflow/overflow are
+included in the edge bins. These are shape comparisons, not cross sections or
+trigger rates. Plot inputs with incompatible definitions or duplicate jobs are
+rejected.

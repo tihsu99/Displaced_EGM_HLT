@@ -2,11 +2,10 @@
 
 ## Software checks
 
-Run the synthetic demo and inspect `evaluation/roc.png`, `bdt_confusion.png`,
-`learning_curve.png` and the per-sample displacement efficiencies. Read the small
-JSON model and use `apply-id` to check the exported model's inference interface.
-The demo exercises all analysis stages without production credentials or a
-CMSSW build.
+The primary workflow is matched ROOT ntuples followed directly by variable
+plots. Tests cover matching, histogram populations/normalization, replay
+configuration and production guards. The synthetic demo tests the optional ID
+tuning tools; it is not a substitute for distributions from real ntuples.
 Start from the repository root with `source env.sh` in a fresh lxplus Bash shell.
 Analysis packages come from CVMFS; CMSSW execution uses `cmsenv`. No virtual
 environment or package installation is required or used by the workflow.
@@ -34,8 +33,8 @@ Use a new demo output directory for each run.
   geometry approximation; test electron matching separately if needed.
 - Submit a one-file Condor pilot, inspect EOS ROOT/provenance/receipt, then prepare
   the complete production farm with a fresh campaign name.
-- Build the dataset only from a complete farm. Save its config and hashes with
-  the models. Verify train/validation/test statistics for every sample.
+- Run `plot-variables` directly on the completed ntuples. Check the matched
+  signal counts, background populations and per-sample normalization.
 
 ## Required campaign inputs
 

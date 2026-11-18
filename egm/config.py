@@ -40,7 +40,7 @@ def validate_production(c):
     errors = []
     for section, keys in {
         "storage": ["eos"], "cmssw": ["release", "scram_arch"],
-        "ntuplizer": ["candidates", "gen_particles", "generator"],
+        "ntuplizer": ["objects", "candidates", "gen_particles", "generator"],
     }.items():
         for key in keys:
             if not c.get(section, {}).get(key):
@@ -79,6 +79,37 @@ def validate_production(c):
         errors.append("cmssw.mode must be existing or rerun")
     if mode == "rerun" and not c["cmssw"].get("replay_pset"):
         errors.append("Set cmssw.replay_pset for HLT rerunning")
+    ntuple = c.get("ntuplizer", {})
+    selection, matching = ntuple.get("selection", {}), ntuple.get("matching", {})
+    for section, values, keys in [("selection", selection, ["pt_min", "abs_eta_max"]),
+                                  ("matching", matching, ["max_dr", "ecal_radius_cm", "ecal_half_length_cm"])]:
+        for key in keys:
+            value = values.get(key)
+            if not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+                errors.append(f"ntuplizer.{section}.{key} must be finite and positive")
+    if matching.get("direction") not in {"ecal_barrel", "momentum"}:
+        errors.append("ntuplizer.matching.direction must be ecal_barrel or momentum")
+    if matching.get("pdg_id") not in ntuple.get("pdg_ids", []):
+        errors.append("ntuplizer.matching.pdg_id must be stored in pdg_ids")
+    if matching.get("direction") == "ecal_barrel" and matching.get("pdg_id") != 22:
+        errors.append("Straight ECAL propagation is only supported for photons")
+    if mode == "rerun":
+        replay = c["cmssw"].get("replay", {})
+        process = replay.get("process")
+        if not process or not isinstance(replay.get("steps"), list) or not replay["steps"]:
+            errors.append("Set cmssw.replay.process and steps")
+        elif "HLT:" + c["cmssw"].get("provenance", {}).get("menu", "") not in replay["steps"]:
+            errors.append("cmssw.replay.steps must include the configured HLT menu")
+        extra = replay.get("extra", {})
+        for key in ["module", "load", "instance", "pixel_seeds", "gsf_tracks"]:
+            if not extra.get(key):
+                errors.append(f"Set cmssw.replay.extra.{key}")
+        if ntuple.get("objects") != f"{extra.get('module')}:{extra.get('instance')}:{process}":
+            errors.append("ntuplizer.objects must name the configured Extra module, instance and process")
+        for tag in [ntuple.get("candidates", ""), *ntuple.get("maps", {}).values(),
+                    extra.get("pixel_seeds", ""), extra.get("gsf_tracks", "")]:
+            if len(tag.split(":")) != 3 or tag.split(":")[-1] != process:
+                errors.append(f"HLT InputTag must explicitly use {process}: {tag}")
     for key in ("global_tag", "geometry", "era", "menu", "input_campaign"):
         if not c.get("cmssw", {}).get("provenance", {}).get(key):
             errors.append(f"Record cmssw.provenance.{key}")

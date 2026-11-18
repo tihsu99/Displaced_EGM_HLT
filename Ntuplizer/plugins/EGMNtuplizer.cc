@@ -8,40 +8,54 @@
 #include "CommonTools/UtilAlgos/interface/TFileService.h"
 #include "DataFormats/EgammaReco/interface/SuperCluster.h"
 #include "DataFormats/HepMCCandidate/interface/GenParticle.h"
-#include "DataFormats/RecoCandidate/interface/RecoEcalCandidate.h"
-#include "DataFormats/RecoCandidate/interface/RecoEcalCandidateIsolation.h"
+#include "DataFormats/HLTReco/interface/EgammaObject.h"
+#include "DataFormats/HLTReco/interface/EgammaObjectFwd.h"
+#include "Displaced_EGM_HLT/Ntuplizer/interface/PhotonMatching.h"
 #include "FWCore/Framework/interface/Event.h"
 #include "FWCore/Framework/interface/MakerMacros.h"
 #include "FWCore/Framework/interface/one/EDAnalyzer.h"
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 #include "FWCore/ServiceRegistry/interface/Service.h"
 #include "FWCore/Utilities/interface/Exception.h"
+#include "FWCore/Utilities/interface/InputTag.h"
 #include "SimDataFormats/GeneratorProducts/interface/GenEventInfoProduct.h"
 #include "TTree.h"
+#include "TNamed.h"
 
 class EGMNtuplizer : public edm::one::EDAnalyzer<edm::one::SharedResources> {
 public:
   explicit EGMNtuplizer(const edm::ParameterSet& cfg)
-      : candidates_(consumes<reco::RecoEcalCandidateCollection>(cfg.getParameter<edm::InputTag>("candidates"))),
+      : objects_(consumes<trigger::EgammaObjectCollection>(cfg.getParameter<edm::InputTag>("objects"))),
         particles_(consumes<reco::GenParticleCollection>(cfg.getParameter<edm::InputTag>("genParticles"))),
         generator_(consumes<GenEventInfoProduct>(cfg.getParameter<edm::InputTag>("generator"))),
         pdgIds_(cfg.getParameter<std::vector<int>>("pdgIds")),
         llpIds_(cfg.getParameter<std::vector<int>>("llpPdgIds")),
         invalidValues_(cfg.getParameter<std::vector<double>>("invalidMapValues")),
-        divideByEnergy_(cfg.getParameter<std::vector<std::string>>("divideByCandidateEnergy")) {
+        divideByEnergy_(cfg.getParameter<std::vector<std::string>>("divideByCandidateEnergy")),
+        ptMin_(cfg.getParameter<double>("ptMin")), absEtaMax_(cfg.getParameter<double>("absEtaMax")),
+        matchingPdgId_(cfg.getParameter<int>("matchingPdgId")),
+        matchingDirection_(cfg.getParameter<std::string>("matchingDirection")),
+        maxDR_(cfg.getParameter<double>("maxDR")), radius_(cfg.getParameter<double>("ecalRadius")),
+        halfLength_(cfg.getParameter<double>("ecalHalfLength")) {
+    if (matchingDirection_ != "ecal_barrel" && matchingDirection_ != "momentum")
+      throw cms::Exception("Configuration") << "Unknown matching direction";
+    if (matchingDirection_ == "ecal_barrel" && matchingPdgId_ != 22)
+      throw cms::Exception("Configuration") << "Straight ECAL propagation is only supported for photons";
     usesResource(TFileService::kSharedResource);
     edm::Service<TFileService> fs;
-    tree_ = fs->make<TTree>("Events", "Unfiltered EGM candidates and generator denominators");
+    fs->make<TNamed>("metadata", cfg.getParameter<std::string>("metadata").c_str());
+    tree_ = fs->make<TTree>("Events", "HLTX EGM variables and generator matching");
     tree_->Branch("run", &run_, "run/i");
     tree_->Branch("lumi", &lumi_, "lumi/i");
     tree_->Branch("event", &event_, "event/l");
     tree_->Branch("gen_weight", &weight_, "gen_weight/D");
-    for (const auto& name : {"pt", "eta", "phi", "sc_eta", "sc_phi", "gen_pt", "gen_eta", "gen_phi",
+    for (const auto& name : {"pt", "eta", "phi", "sc_eta", "sc_phi", "match_dr", "gen_pt", "gen_eta", "gen_phi",
                              "gen_vx", "gen_vy", "gen_vz"}) {
       floats_[name] = {};
       tree_->Branch(name, &floats_.at(name));
     }
-    for (const auto& name : {"gen_pdg_id", "gen_prompt", "gen_llp"}) {
+    for (const auto& name : {"gen_pdg_id", "gen_prompt", "gen_llp", "gen_fiducial", "matched_gen_index",
+                             "match_pdg_id", "match_prompt", "match_llp", "match_gen_fiducial"}) {
       ints_[name] = {};
       tree_->Branch(name, &ints_.at(name));
     }
@@ -49,12 +63,13 @@ public:
       auto name = entry.getParameter<std::string>("name");
       if (floats_.count(name) || ints_.count(name))
         throw cms::Exception("Configuration") << "Reserved branch name: " << name;
-      maps_[name] = consumes<reco::RecoEcalCandidateIsolationMap>(entry.getParameter<edm::InputTag>("src"));
+      const auto tag = entry.getParameter<edm::InputTag>("src");
+      variables_[name] = tag.label() + (tag.instance().empty() ? "" : "_" + tag.instance());
       floats_[name] = {};
       tree_->Branch(name.c_str(), &floats_.at(name));
     }
     for (const auto& name : divideByEnergy_)
-      if (!maps_.count(name)) throw cms::Exception("Configuration") << "Unknown normalized map: " << name;
+      if (!variables_.count(name)) throw cms::Exception("Configuration") << "Unknown normalized map: " << name;
   }
 
 private:
@@ -79,31 +94,32 @@ private:
     lumi_ = event.luminosityBlock();
     event_ = event.id().event();
     weight_ = event.get(generator_).weight();
-    const auto candidates = event.getHandle(candidates_);
-    if (!candidates.isValid()) throw cms::Exception("ProductNotFound") << "Missing EGM candidate collection";
-    std::map<std::string, edm::Handle<reco::RecoEcalCandidateIsolationMap>> maps;
-    for (const auto& entry : maps_) {
-      maps[entry.first] = event.getHandle(entry.second);
-      if (!maps.at(entry.first).isValid())
-        throw cms::Exception("ProductNotFound") << "Missing required feature: " << entry.first;
-    }
-    for (size_t i = 0; i < candidates->size(); ++i) {
-      const auto& c = candidates->at(i);
+    if (!std::isfinite(weight_)) throw cms::Exception("InvalidFeature") << "Nonfinite generator weight";
+    const auto objects = event.getHandle(objects_);
+    if (!objects.isValid()) throw cms::Exception("ProductNotFound") << "Missing configured EgammaObject collection";
+    std::vector<displacedegm::Direction> recoDirections, genDirections;
+    for (const auto& c : *objects) {
       const auto sc = c.superCluster();
       if (sc.isNull() || !sc.isAvailable())
         throw cms::Exception("ProductNotFound") << "SuperCluster references were dropped from the input";
+      if (!std::isfinite(c.pt()) || !std::isfinite(c.eta()) || !std::isfinite(c.phi()) ||
+          !std::isfinite(sc->eta()) || !std::isfinite(sc->phi()))
+        throw cms::Exception("InvalidFeature") << "Nonfinite candidate kinematics";
+      if (c.pt() <= ptMin_ || std::abs(sc->eta()) >= absEtaMax_) continue;
       floats_["pt"].push_back(c.pt());
       floats_["eta"].push_back(c.eta());
       floats_["phi"].push_back(c.phi());
       floats_["sc_eta"].push_back(sc->eta());
       floats_["sc_phi"].push_back(sc->phi());
-      const reco::RecoEcalCandidateRef ref(candidates, i);
-      for (const auto& entry : maps) {
-        const auto found = entry.second->find(ref);
-        if (found == entry.second->end() || !std::isfinite(found->val) ||
-            std::find(invalidValues_.begin(), invalidValues_.end(), found->val) != invalidValues_.end())
-          throw cms::Exception("InvalidFeature") << "Missing/nonfinite map entry: " << entry.first;
-        float value = found->val;
+      recoDirections.push_back(matchingDirection_ == "ecal_barrel"
+                                   ? displacedegm::Direction{sc->eta(), sc->phi(), true}
+                                   : displacedegm::Direction{c.eta(), c.phi(), true});
+      for (const auto& entry : variables_) {
+        if (!c.hasVar(entry.second))
+          throw cms::Exception("InvalidFeature") << "Missing EgammaObject variable: " << entry.second;
+        float value = c.var(entry.second);
+        if (!std::isfinite(value) || std::find(invalidValues_.begin(), invalidValues_.end(), value) != invalidValues_.end())
+          throw cms::Exception("InvalidFeature") << "Invalid EgammaObject variable: " << entry.second;
         if (std::find(divideByEnergy_.begin(), divideByEnergy_.end(), entry.first) != divideByEnergy_.end()) {
           if (!std::isfinite(c.energy()) || c.energy() <= 0.)
             throw cms::Exception("InvalidFeature") << "Invalid candidate energy for: " << entry.first;
@@ -116,6 +132,9 @@ private:
     // Keep all final-state particles of interest, including those with no reconstructed match.
     for (const auto& g : event.get(particles_)) {
       if (g.status() != 1 || std::find(pdgIds_.begin(), pdgIds_.end(), std::abs(g.pdgId())) == pdgIds_.end()) continue;
+      if (!std::isfinite(g.pt()) || !std::isfinite(g.eta()) || !std::isfinite(g.phi()) ||
+          !std::isfinite(g.vx()) || !std::isfinite(g.vy()) || !std::isfinite(g.vz()))
+        throw cms::Exception("InvalidFeature") << "Nonfinite generator kinematics";
       floats_["gen_pt"].push_back(g.pt());
       floats_["gen_eta"].push_back(g.eta());
       floats_["gen_phi"].push_back(g.phi());
@@ -125,17 +144,34 @@ private:
       ints_["gen_pdg_id"].push_back(g.pdgId());
       ints_["gen_prompt"].push_back(g.statusFlags().isPrompt());
       ints_["gen_llp"].push_back(hasLLPAncestor(g));
+      auto direction = matchingDirection_ == "ecal_barrel"
+                           ? displacedegm::atBarrel(g.vx(), g.vy(), g.vz(), g.eta(), g.phi(), radius_, halfLength_)
+                           : displacedegm::Direction{g.eta(), g.phi(), true};
+      direction.valid = direction.valid && std::abs(g.pdgId()) == matchingPdgId_;
+      genDirections.push_back(direction);
+      ints_["gen_fiducial"].push_back(direction.valid && g.pt() > ptMin_ && std::abs(direction.eta) < absEtaMax_);
+    }
+    for (const auto& [gi, dr] : displacedegm::matchUnique(recoDirections, genDirections, maxDR_)) {
+      ints_["matched_gen_index"].push_back(gi);
+      floats_["match_dr"].push_back(dr);
+      for (const auto& name : {"pdg_id", "prompt", "llp"})
+        ints_[std::string("match_") + name].push_back(gi < 0 ? 0 : ints_.at(std::string("gen_") + name).at(gi));
+      ints_["match_gen_fiducial"].push_back(gi < 0 ? 0 : ints_.at("gen_fiducial").at(gi));
     }
     tree_->Fill();  // Events without candidates are part of the normalization denominator.
   }
 
-  edm::EDGetTokenT<reco::RecoEcalCandidateCollection> candidates_;
+  edm::EDGetTokenT<trigger::EgammaObjectCollection> objects_;
   edm::EDGetTokenT<reco::GenParticleCollection> particles_;
   edm::EDGetTokenT<GenEventInfoProduct> generator_;
-  std::map<std::string, edm::EDGetTokenT<reco::RecoEcalCandidateIsolationMap>> maps_;
+  std::map<std::string, std::string> variables_;
   std::vector<int> pdgIds_, llpIds_;
   std::vector<double> invalidValues_;
   std::vector<std::string> divideByEnergy_;
+  double ptMin_, absEtaMax_;
+  int matchingPdgId_;
+  std::string matchingDirection_;
+  double maxDR_, radius_, halfLength_;
   std::map<std::string, std::vector<float>> floats_;
   std::map<std::string, std::vector<int>> ints_;
   TTree* tree_;

@@ -51,8 +51,9 @@ not establish that overtraining is absent.
    electron ID is inefficient. This first implementation reads calorimeter HLT
    EGM candidates; it is not a GSF-electron reconstruction implementation.
 4. A charged electron bends in the magnetic field and radiates. The photon
-   straight-line ECAL projection must not be used for it. Set `selection.pdg_id:
-   11` and `matching.direction: momentum` only for an explicitly preliminary
+   straight-line ECAL projection must not be used for it. Set
+   `ntuplizer.matching.pdg_id: 11` and `ntuplizer.matching.direction: momentum`
+   in production YAML only for an explicitly preliminary
    matching study; investigate charge/helix propagation, material, track matching
    and DeltaR closure before reporting displaced-electron efficiency.
 5. Supply electron signal samples and their LLP ancestor IDs. The slide's HGG
@@ -98,7 +99,9 @@ sample-origin background definition, including any real photons in QCD.
 detector origin. They are not track dxy/dz, displacement relative to a fitted PV,
 or the LLP's proper lifetime. Generator acceptance plots versus pt/eta use gen
 kinematics; reconstructed-ID plots use reco kinematics. Bin overflows are not
-folded into the edge bins.
+folded into the edge bins for efficiency plots. The direct `plot-variables`
+shape comparisons include underflow/overflow in the edge bins and record their
+counts in `distributions.json`.
 
 ## Weights and physical rates
 

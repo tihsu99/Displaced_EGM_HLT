@@ -45,29 +45,40 @@ name's 140X tag does not identify its exact producer patch release.
 
 ## Inclusive feature reconstruction
 
-`cmssw/replay_cfg.py` invokes `cmsDriver.py --no_exec` with the YAML's conditions,
-geometry, era and HLT menu. It replaces the generated schedule with
-`cmssw.replay.sequence` and one output path. The sequence uses the release's
+`Ntuplizer/test/replay_cfg.py` invokes `cmsDriver.py --no_exec --no_output` with the YAML's
+conditions, geometry, era and steps (`L1,L1TrackTrigger,L1P2GT,HLT:75e33`). The
+generated L1/HLT schedule is retained. An additional unconditional path from
+`cmssw.replay.sequence` supplies every configured feature. It uses the release's
 [unseeded photon producers](https://github.com/cms-sw/cmssw/blob/CMSSW_20_1_0_pre5/HLTrigger/Configuration/python/HLT_75e33/sequences/HLTPhoton108EBTightIDTightIsoUnseededSequence_cfi.py),
-plus R9 and track isolation. It rejects EDFilter modules, and applies no L1
-decision, ID filter, pixel match or `SelectEvents` skim. Zero-candidate events
-remain in the denominator. Track isolation requires the
+plus R9 and track isolation. This additional path rejects EDFilter modules;
+ntupling is not conditional on any trigger decision. Zero-candidate events are
+retained. Track isolation requires the
 [HLT tracking sequence](https://github.com/cms-sw/cmssw/blob/CMSSW_20_1_0_pre5/HLTrigger/Configuration/python/HLT_75e33/sequences/HLTTrackingSequence_cfi.py).
 
 The default [ECAL supercluster producer](https://github.com/cms-sw/cmssw/blob/CMSSW_20_1_0_pre5/HLTrigger/Configuration/python/HLT_75e33/modules/hltParticleFlowSuperClusterECALUnseeded_cfi.py)
 has `thresh_SCEt = 10.0`. The YAML overrides this to 0.0 before the 5 GeV analysis
-selection. Other clustering thresholds remain those of the release. This is an
-inclusive ID study, not the acceptance or rate of the original photon path.
+selection in the ntuplizer. Other clustering thresholds remain those of the
+release. This is an inclusive ID study, not a measurement of the original path's rate.
 
 HGCal reconstruction is scheduled because the standard candidate producer
 consumes barrel and endcap superclusters; analysis retains the configured barrel
-acceptance. Old HLT products are dropped on input. New `HLTX` products and generator
-collections are kept in the temporary replay file, which stays in job scratch.
+acceptance. Old HLT products are dropped on input. After the paths run, an EndPath
+executes `hltEgammaHLTExtra` followed by `EGMNtuplizer`. Both consume the current
+`HLTX` products. `TFileService` writes the final ntuple directly; no intermediate
+EDM file or offline RECO/PAT step is needed for these online variables.
+
+This follows the L1/HLTX/Extra object chain in `EGamma-Workflow` and the Phase-2
+timing study. The L1 steps and `customisePhase2TTOn110` are also present in the
+release's linked 14X-input recipe. Neither reference establishes runtime
+compatibility of this exact GMSB sample with the configured release.
 
 ## Feature definitions
 
 All maps are keyed to `hltEgammaCandidatesUnseeded::HLTX`. The YAML specifies
-module, instance and process explicitly.
+module, instance and process explicitly. `hltEgammaHLTExtra:Unseeded:HLTX` copies
+these entries to variables named `moduleLabel[_instance]`. The ntuplizer reads
+these named variables with `hasVar` checks, including
+`hltEgammaClusterShapeUnseeded_sMajor` and `hltEgammaClusterShapeUnseeded_sMinor`.
 
 | Branch | Module / instance in `HLTX` | Stored quantity |
 | --- | --- | --- |
@@ -87,6 +98,20 @@ The [HCAL producer](https://github.com/cms-sw/cmssw/blob/CMSSW_20_1_0_pre5/RecoE
 stores H, despite its label containing `HoverE`.
 `ntuplizer.divide_by_candidate_energy: [hoe]` supplies the division explicitly.
 Nonpositive or nonfinite normalization energy fails event processing.
+
+`sMajor` and `sMinor` come from `EcalClusterTools::cluster2ndMoments` of the ECAL
+supercluster seed and its rechits. The producer writes zeros for non-ECAL seeds;
+these are not HGCal shower-shape definitions. The default barrel selection avoids
+using those HGCal placeholders. Presence in source does not prove a particular
+sample contains nonzero valid values; job inspection records per-variable counts
+and extrema.
+
+Before writing each event, the ntuplizer performs one-to-one nearest-dR generator
+matching. For photons it projects the generated flight direction from the decay
+vertex to the configured ECAL barrel surface and compares to the supercluster
+direction. Generator fiducial flags and unmatched generators are retained.
+No prompt impact-parameter or pixel-match selection is imposed. Plotting uses
+the stored match fields and does not repeat matching.
 
 The [ECAL isolation config](https://github.com/cms-sw/cmssw/blob/CMSSW_20_1_0_pre5/HLTrigger/Configuration/python/HLT_75e33/modules/hltEgammaEcalPFClusterIsoUnseeded_cfi.py),
 [HCAL isolation config](https://github.com/cms-sw/cmssw/blob/CMSSW_20_1_0_pre5/HLTrigger/Configuration/python/HLT_75e33/modules/hltEgammaHcalPFClusterIsoUnseeded_cfi.py),
@@ -112,7 +137,7 @@ Inspect these artifacts after the README's local test:
 - `input_provenance.txt`, `event_content.txt`: input history and products.
 - `replay_base.py`, `replay_config.py`: generated and final configurations.
 - `replay_metadata.json`: resolved GlobalTag, overrides and feature modules.
-- `worker.log`, `ReplayJobReport.xml`, `FrameworkJobReport.xml`: processing evidence.
+- `worker.log`, `FrameworkJobReport.xml`: processing evidence.
 - `inspection.json`, `ntuple.root`: event/candidate counts and checked branches.
 
 A clean local run checks the exercised file and events. Compare multiplicities,
@@ -124,7 +149,7 @@ samples by this project.
 ## Other input profiles
 
 Use a separate YAML and campaign for another release/menu. `cmssw.mode: existing`
-consumes persisted candidates/maps without reconstruction. A newer reader alone
+consumes persisted EgammaObjects and their supercluster references without reconstruction. A newer reader alone
 does not update their algorithms. Plain MiniAOD or NanoAOD cannot replace missing
 HLT products or the RAW/digi inputs needed for this replay.
 

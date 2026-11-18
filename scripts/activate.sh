@@ -10,7 +10,8 @@ case "$4" in
     ;;
   scratch)
     scram project CMSSW "$3"
-    cp -R "$work_dir/cmssw/Displaced_EGM_HLT" "$3/src/"
+    mkdir -p "$3/src/Displaced_EGM_HLT"
+    cp -R "$work_dir/Ntuplizer" "$3/src/Displaced_EGM_HLT/"
     cd "$3/src"
     ;;
   *)
@@ -28,4 +29,4 @@ if [ "$4" = scratch ]; then
   scram b -j "$6"
 fi
 cd "$work_dir"
-exec python3 cmssw/run_job.py
+exec python3 scripts/run_job.py

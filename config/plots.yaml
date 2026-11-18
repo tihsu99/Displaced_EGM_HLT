@@ -1,0 +1,20 @@
+# Plot directly from ROOT ntuples; no model or training dataset is needed.
+weights: absolute
+samples:
+  gmsb: {label: 'GMSB displaced photons', color: '#d62728'}
+  hgg: {label: 'H to gamma gamma', color: '#1f77b4'}
+  qcd_inclusive: {label: 'QCD inclusive', color: '#444444'}
+  qcd_em: {label: 'QCD EM enriched', color: '#2ca02c'}
+  qcd_bc: {label: 'QCD b/c to e', color: '#9467bd'}
+variables:
+  pt: {label: 'HLT candidate pT [GeV]', bins: 50, min: 5, max: 205, log_y: true}
+  sc_eta: {label: 'Supercluster eta', bins: 48, min: -1.44, max: 1.44}
+  sigma_ieta_ieta: {label: 'sigma ieta ieta (full 5x5)', bins: 60, min: 0, max: 0.06, log_y: true}
+  s_major: {label: 'sMajor (ECAL seed second moment)', bins: 60, min: 0, max: 3, log_y: true}
+  s_minor: {label: 'sMinor (ECAL seed second moment)', bins: 60, min: 0, max: 1.5, log_y: true}
+  shape_asymmetry: {label: '(sMajor - sMinor) / (sMajor + sMinor)', bins: 50, min: -1, max: 1}
+  hoe: {label: 'H / E', bins: 50, min: 0, max: 1, log_y: true}
+  ecal_iso: {label: 'ECAL PF cluster isolation [GeV]', bins: 50, min: 0, max: 100, log_y: true}
+  hcal_iso: {label: 'HCAL PF cluster isolation [GeV]', bins: 50, min: 0, max: 100, log_y: true}
+  r9: {label: 'R9', bins: 60, min: 0, max: 1.2}
+  track_iso: {label: 'Hollow track isolation [GeV]', bins: 50, min: 0, max: 100, log_y: true}

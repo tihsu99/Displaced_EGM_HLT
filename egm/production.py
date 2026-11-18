@@ -11,6 +11,24 @@ from .config import ROOT, digest, file_digest, read_yaml, validate_production, w
 from .cmssw import PACKAGE, check_prebuilt, prebuilt_snapshot
 
 
+def job_script(job_id):
+    return '#!/bin/bash\nset -euo pipefail\njob_id=' + job_id + '''
+# Condor transfers the worker, input JSON and source bundle into its scratch.
+if [[ -n "${_CONDOR_SCRATCH_DIR:-}" && -f "$PWD/$job_id.json" ]]; then
+  farm=$PWD
+  job="$farm/$job_id.json"
+else
+  farm=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+  job="$farm/jobs/$job_id.json"
+  if [[ "${1:-}" != --local ]]; then
+    echo "Local validation: bash $0 --local. Submit production with egm condor --farm $farm." >&2
+    exit 2
+  fi
+fi
+exec /bin/bash "$farm/worker.sh" "$job" "$farm/source.tar.gz" "$@"
+'''
+
+
 def resolve_files(sample, redirector):
     files = sample.get("files")
     if not files:
@@ -62,27 +80,37 @@ def prepare(config, farm, selected=None, max_files=None):
         replay = (Path(config).resolve().parent / replay).resolve()
         if not replay.is_file():
             raise ValueError(f"Missing replay pset: {replay}")
+        bundled_replay = Path(PACKAGE.name) / "test/replay_cfg.py"
+        if replay != ROOT / bundled_replay:
+            bundled_replay = Path("scripts/custom_replay_cfg.py")
+        cfg["cmssw"]["replay_pset"] = str(bundled_replay)
     farm.mkdir(parents=True)
     (farm / "jobs").mkdir()
     (farm / "logs").mkdir()
     with tarfile.open(farm / "source.tar.gz", "w:gz") as archive:
-        for source, destination in [(ROOT / "cmssw", Path("cmssw")),
-                                    (ROOT / PACKAGE.name, Path("cmssw") / PACKAGE)]:
-            for path in sorted(source.rglob("*")):
-                if path.is_file() and path.suffix in {".py", ".cc", ".h", ".xml", ".sh"}:
-                    if replay and path == ROOT / "cmssw/replay_cfg.py":
-                        continue
-                    archive.add(path, arcname=str(destination / path.relative_to(source)))
-        archive.add(ROOT / "egm/cmssw.py", arcname="cmssw/runtime_checks.py")
-        if replay:
-            archive.add(replay, arcname="cmssw/replay_cfg.py")
+        for path in sorted((ROOT / PACKAGE.name).rglob("*")):
+            if path.is_file() and path.suffix in {".py", ".cc", ".h", ".xml", ".sh"}:
+                archive.add(path, arcname=str(path.relative_to(ROOT)))
+        for name in ["scripts/activate.sh", "scripts/run_job.py"]:
+            archive.add(ROOT / name, arcname=name)
+        archive.add(ROOT / "egm/cmssw.py", arcname="scripts/runtime_checks.py")
+        if replay and bundled_replay == Path("scripts/custom_replay_cfg.py"):
+            archive.add(replay, arcname=str(bundled_replay))
     for name in ["worker.py", "worker.sh"]:
         shutil.copy2(ROOT / "scripts" / name, farm / name)
     (farm / "worker.sh").chmod(0o755)
-    snapshot = {name: file_digest(farm / name) for name in ["source.tar.gz", "worker.py", "worker.sh"]}
+    count = cfg["production"]["files_per_job"]
+    scripts = []
+    for name, files in file_lists.items():
+        for start in range(0, len(files), count):
+            job_id = f"{name}_{start // count:05d}"
+            script = f"jobs/{job_id}.sh"
+            (farm / script).write_text(job_script(job_id))
+            (farm / script).chmod(0o755)
+            scripts.append(script)
+    snapshot = {name: file_digest(farm / name) for name in ["source.tar.gz", "worker.py", "worker.sh", *scripts]}
     fingerprint = digest(dict(config=cfg, snapshot=snapshot))
     jobs = []
-    count = cfg["production"]["files_per_job"]
     for name, sample in samples.items():
         for start in range(0, len(file_lists[name]), count):
             job_id = f"{name}_{start // count:05d}"
@@ -95,7 +123,7 @@ def prepare(config, farm, selected=None, max_files=None):
     manifest = dict(config=cfg, fingerprint=fingerprint, snapshot=snapshot, jobs=jobs)
     write_json(farm / "manifest.json", manifest)
     write_submit(farm, cfg, jobs)
-    print(f"Prepared {len(jobs)} jobs in {farm}; run local-test before submit")
+    print(f"Prepared {len(jobs)} jobs in {farm}; run jobs/<job>.sh --local before submission")
     return manifest
 
 
@@ -109,12 +137,11 @@ def write_submit(farm, cfg, jobs):
     if any("\n" in value or "\r" in value for value in values) or any('"' in value for value in values[:3]):
         raise ValueError("Invalid Condor value")
     content = f'''universe = vanilla
-executable = {farm}/worker.sh
-arguments = $(job).json source.tar.gz
+executable = {farm}/jobs/$(job).sh
 initialdir = {farm}
 should_transfer_files = YES
 when_to_transfer_output = ON_EXIT
-transfer_input_files = {farm}/source.tar.gz,{farm}/worker.py,{farm}/jobs/$(job).json
+transfer_input_files = {farm}/source.tar.gz,{farm}/worker.sh,{farm}/worker.py,{farm}/jobs/$(job).json
 transfer_output_files = ""
 output = {farm}/logs/$(job).out
 error = {farm}/logs/$(job).err
@@ -155,7 +182,7 @@ def check_farm_runtime(farm, manifest):
         with tempfile.TemporaryDirectory(prefix="egm-source-check-") as temporary:
             package = Path(temporary)
             with tarfile.open(farm / "source.tar.gz") as archive:
-                prefix = "cmssw/" + str(PACKAGE) + "/"
+                prefix = PACKAGE.name + "/"
                 for member in archive.getmembers():
                     if member.isfile() and member.name.startswith(prefix):
                         target = package / member.name[len(prefix):]
@@ -176,8 +203,7 @@ def local_test(farm, sample=None):
     if not selected:
         raise ValueError(f"No jobs for sample: {sample}")
     for job in selected.values():
-        subprocess.run(["/bin/bash", str(farm / "worker.sh"), str(farm / "jobs" / (job["id"] + ".json")),
-                        str(farm / "source.tar.gz"), "--local"], cwd=farm, check=True)
+        subprocess.run(["/bin/bash", str(farm / "jobs" / (job["id"] + ".sh")), "--local"], cwd=farm, check=True)
 
 
 def submit(farm, dry_run=False):

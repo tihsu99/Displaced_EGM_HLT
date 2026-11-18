@@ -38,7 +38,8 @@ def prebuilt_snapshot(config, source_package):
         actual = installed / relative
         if checksum(actual) != checksum(source_package / relative):
             raise ValueError(f"CMSSW source differs from the farm: {relative}; rebuild and prepare a new farm")
-        if actual.stat().st_mtime_ns > binary.stat().st_mtime_ns:
+        # Python configurations are frozen too, but do not rebuild the plugin library.
+        if actual.suffix in {".cc", ".h", ".xml"} and actual.stat().st_mtime_ns > binary.stat().st_mtime_ns:
             raise ValueError(f"CMSSW source is newer than the plugin: {relative}; run scram b")
         hashes[str(relative)] = checksum(actual)
     return dict(base=str(base), sources=hashes, library_sha256=checksum(binary))

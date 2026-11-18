@@ -1,7 +1,7 @@
 # Unvalidated Phase2Spring24 candidate; no successful 140X sample run is recorded.
 # Source definitions are listed in docs/cmssw.md.
 # Export EGM_CMSSW_BASE, EGM_EOS and X509_USER_PROXY before preparing jobs.
-campaign: phase2_barrel_201pre5_v1
+campaign: phase2_barrel_201pre5_ntuple_v2
 storage:
   eos: ${EGM_EOS}
   redirector: root://cms-xrd-global.cern.ch/
@@ -15,7 +15,7 @@ cmssw:
   build_jobs: 2  # Used only by runtime: scratch.
   # existing: consume persisted HLT candidates/maps; rerun: run the pset below first.
   mode: rerun
-  replay_pset: ../cmssw/replay_cfg.py
+  replay_pset: ../Ntuplizer/test/replay_cfg.py
   # A replay pset must accept inputFiles, outputFile, maxEvents via VarParsing.
   # Custom dependencies can live in the prebuilt area; keep that area unchanged.
   # Scratch mode requires release-provided dependencies or a self-contained pset.
@@ -27,13 +27,16 @@ cmssw:
     input_campaign: Phase2Spring24_PU200
   replay:
     process: HLTX
+    steps: [L1, L1TrackTrigger, L1P2GT, 'HLT:75e33']
     threads: 1
     customise:
       - SLHCUpgradeSimulations/Configuration/aging.customise_aging_1000
+      - L1Trigger/Configuration/customisePhase2TTOn110.customisePhase2TTOn110
     load:
       - HLTrigger.Configuration.HLT_75e33.modules.hltEgammaR9Unseeded_cfi
       - HLTrigger.Configuration.HLT_75e33.modules.hltEgammaHollowTrackIsoUnseeded_cfi
-    # Producer-only path: no L1, pT, photon ID, pixel-match or event filter.
+    # Additional unconditional path; keep the generated L1/HLT menu schedule.
+    # This supplies all ID inputs even when a trigger path rejects an event.
     sequence:
       - HLTBeamSpotSequence
       - HLTDoFullUnpackingEgammaEcalSequence
@@ -58,12 +61,14 @@ cmssw:
       - drop *_hlt*_*_*
       - drop l1tPFJets_*_*_*
       - drop l1tTrackerMuons_l1tTkMuonsGmt*_*_HLT
-    output_commands:
-      - drop *
-      - keep *_*_*_HLTX
-      - keep *_genParticles_*_*
-      - keep *_generator_*_*
+    extra:
+      module: hltEgammaHLTExtra
+      load: RecoEgamma.EgammaHLTProducers.hltEgammaHLTExtra_cfi
+      instance: Unseeded
+      pixel_seeds: hltEgammaElectronPixelSeedsUnseeded::HLTX
+      gsf_tracks: hltEgammaGsfTracksUnseeded::HLTX
 ntuplizer:
+  objects: hltEgammaHLTExtra:Unseeded:HLTX
   candidates: hltEgammaCandidatesUnseeded::HLTX
   gen_particles: genParticles
   generator: generator
@@ -72,9 +77,16 @@ ntuplizer:
   invalid_map_values: [-999.0, -9999.0]
   # The HLT HoverE map contains H in GeV, not the dimensionless ratio.
   divide_by_candidate_energy: [hoe]
-  # No ID, pT, eta, impact-parameter, pixel-hit, or prompt filtering here.
+  # Kinematic acceptance only; no ID, pixel match or prompt-track requirement.
+  selection: {pt_min: 5.0, abs_eta_max: 1.44}
+  matching:
+    pdg_id: 22
+    direction: ecal_barrel
+    max_dr: 0.1
+    ecal_radius_cm: 129.0
+    ecal_half_length_cm: 300.0
   maps:
-    # Each product must be a reco::RecoEcalCandidateIsolationMap keyed to candidates.
+    # Extra copies these maps into vars named moduleLabel[_instance].
     sigma_ieta_ieta: hltEgammaClusterShapeUnseeded:sigmaIEtaIEta5x5:HLTX
     s_major: hltEgammaClusterShapeUnseeded:sMajor:HLTX
     s_minor: hltEgammaClusterShapeUnseeded:sMinor:HLTX
