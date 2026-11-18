@@ -68,6 +68,8 @@ def prepare(config, farm, selected=None, max_files=None):
     with tarfile.open(farm / "source.tar.gz", "w:gz") as archive:
         for path in sorted((ROOT / "cmssw").rglob("*")):
             if path.is_file() and path.suffix in {".py", ".cc", ".h", ".xml", ".sh"}:
+                if replay and path == ROOT / "cmssw/replay_cfg.py":
+                    continue
                 archive.add(path, arcname=str(path.relative_to(ROOT)))
         archive.add(ROOT / "egm/cmssw.py", arcname="cmssw/runtime_checks.py")
         if replay:

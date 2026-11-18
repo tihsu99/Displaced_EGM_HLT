@@ -27,7 +27,8 @@ public:
         generator_(consumes<GenEventInfoProduct>(cfg.getParameter<edm::InputTag>("generator"))),
         pdgIds_(cfg.getParameter<std::vector<int>>("pdgIds")),
         llpIds_(cfg.getParameter<std::vector<int>>("llpPdgIds")),
-        invalidValues_(cfg.getParameter<std::vector<double>>("invalidMapValues")) {
+        invalidValues_(cfg.getParameter<std::vector<double>>("invalidMapValues")),
+        divideByEnergy_(cfg.getParameter<std::vector<std::string>>("divideByCandidateEnergy")) {
     usesResource(TFileService::kSharedResource);
     edm::Service<TFileService> fs;
     tree_ = fs->make<TTree>("Events", "Unfiltered EGM candidates and generator denominators");
@@ -52,6 +53,8 @@ public:
       floats_[name] = {};
       tree_->Branch(name.c_str(), &floats_.at(name));
     }
+    for (const auto& name : divideByEnergy_)
+      if (!maps_.count(name)) throw cms::Exception("Configuration") << "Unknown normalized map: " << name;
   }
 
 private:
@@ -100,7 +103,14 @@ private:
         if (found == entry.second->end() || !std::isfinite(found->val) ||
             std::find(invalidValues_.begin(), invalidValues_.end(), found->val) != invalidValues_.end())
           throw cms::Exception("InvalidFeature") << "Missing/nonfinite map entry: " << entry.first;
-        floats_[entry.first].push_back(found->val);
+        float value = found->val;
+        if (std::find(divideByEnergy_.begin(), divideByEnergy_.end(), entry.first) != divideByEnergy_.end()) {
+          if (!std::isfinite(c.energy()) || c.energy() <= 0.)
+            throw cms::Exception("InvalidFeature") << "Invalid candidate energy for: " << entry.first;
+          value /= c.energy();
+        }
+        if (!std::isfinite(value)) throw cms::Exception("InvalidFeature") << "Nonfinite transformed feature: " << entry.first;
+        floats_[entry.first].push_back(value);
       }
     }
     // Keep all final-state particles of interest, including those with no reconstructed match.
@@ -125,6 +135,7 @@ private:
   std::map<std::string, edm::EDGetTokenT<reco::RecoEcalCandidateIsolationMap>> maps_;
   std::vector<int> pdgIds_, llpIds_;
   std::vector<double> invalidValues_;
+  std::vector<std::string> divideByEnergy_;
   std::map<std::string, std::vector<float>> floats_;
   std::map<std::string, std::vector<int>> ints_;
   TTree* tree_;

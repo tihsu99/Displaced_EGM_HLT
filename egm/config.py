@@ -69,6 +69,11 @@ def validate_production(c):
             errors.append(f"Set a valid ntuplizer.maps.{name} InputTag")
     if not c.get("ntuplizer", {}).get("maps"):
         errors.append("Configure ntuplizer.maps")
+    normalized = c.get("ntuplizer", {}).get("divide_by_candidate_energy", [])
+    if not isinstance(normalized, list) or any(
+            not isinstance(name, str) or name not in c.get("ntuplizer", {}).get("maps", {})
+            for name in normalized):
+        errors.append("ntuplizer.divide_by_candidate_energy must list configured map names")
     mode = c.get("cmssw", {}).get("mode")
     if mode not in {"existing", "rerun"}:
         errors.append("cmssw.mode must be existing or rerun")

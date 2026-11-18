@@ -1,249 +1,195 @@
 # Displaced EGM HLT
 
-A workflow for developing and evaluating prompt and displaced photon
-identification at the CMS Phase-2 High-Level Trigger (HLT). It extracts HLT
-candidate features with CMSSW, tunes cut-based and boosted decision tree (BDT)
-IDs, and evaluates their performance on held-out events. Production runs on
-lxplus and HTCondor, with temporary job data in scratch and results on EOS.
+Develop cut-based and BDT photon IDs for the CMS Phase-2 HLT: reconstruct HLT
+features, produce ntuples on EOS, tune IDs, and evaluate held-out events.
+The default study uses Phase2Spring24 PU200 samples, pT > 5 GeV and |etaSC| < 1.44.
 
-The default study targets Phase2Spring24 PU200 barrel photons with reconstructed
-pT > 5 GeV and |etaSC| < 1.44, using prompt H -> gamma gamma and GMSB signal
-samples against QCD backgrounds. Sample selection, feature definitions, tuning
-and evaluation settings are configured in YAML. Electron studies require
-separate matching and selection validation; see [physics definitions](docs/physics.md).
+The current **unvalidated candidate** is **CMSSW_20_1_0_pre5, el9_amd64_gcc14**,
+selected from the release list checked on 2026-11-18. Compatibility with the
+configured 140X GMSB sample has not been established. The profile uses D110 geometry,
+`Phase2C17I13M9`, `auto:phase2_realistic_T35` and the `75e33` HLT producers.
+The release and producer definitions are source-checked. Choose the working
+release only after the actual sample passes HLT replay and ntuple production
+with a clean exit and validated output; source inspection alone is insufficient.
+See [CMSSW sources and implementation](docs/cmssw.md).
 
-## Workflow
+Run these commands in Bash on lxplus EL9. CMSSW uses `cmsenv`; analysis uses a
+CVMFS LCG view. Run each step only after the previous command succeeds.
 
-| Step | Command | Configuration | Result |
-| --- | --- | --- | --- |
-| 1. Ntuplizer | `prepare`, `local-test`, `submit` | `config/production.yaml` | ROOT + completion receipt + provenance on EOS |
-| Dataset | `dataset` | `config/study.yaml` | Candidate, generator, and event Parquet tables |
-| 2. Cut ID | `tune-cuts` | Feature bounds/directions and target efficiencies | Portable cut JSON |
-| 3. BDT ID | `tune-bdt` | Features and BDT parameter grid | Portable tree JSON, validation working points |
-| 4. Evaluation | `evaluate` | Bins and the working point to display | ROC, confusion, shapes, correlations, loss, efficiencies |
-| Inference | `apply-id` | Model path and working point | Parquet with ID decisions/scores |
+## 1. Create the CMSSW area and build the ntuplizer
 
-The train/validation/test split is 60/20/20 by **event**, shared by all candidates
-and generator denominators. Hyperparameters and thresholds use validation; the
-test split is reserved for the final evaluation. Nothing trains directly on
-displacement or generator labels as input features.
-
-## Environment and quick start
-
-Use the centrally installed software directly: `cmsenv` for the CMSSW ntuplizer,
-and a CVMFS LCG view for dataset preparation, ID tuning and evaluation. No virtual
-environment or package installation is part of this workflow. Run the analysis
-commands from the repository root so Python can import `egm` directly.
-
-In a fresh **Bash** shell on lxplus EL9:
-
-```bash
-source env.sh
-python3 -m egm --help
-python3 -m egm demo --output /tmp/$USER-egm-demo
-python3 scripts/check_environment.py --tests
-python3 -m pytest -q
-```
-
-`env.sh` sources the CVMFS setup selected in `config/environment.sh`, defaulting to
-`LCG_107/x86_64-el9-gcc14-opt`. This published view is listed in the
-[CERN LCG_107 announcement](https://spi.web.cern.ch/2025/02/06/lcg-107-announce.html).
-Override `EGM_LCG_SETUP` with another validated CVMFS setup path if needed.
-The wrapper checks imports and minimum versions from `pyproject.toml`, including
-Python >= 3.10, Uproot 5 and Awkward 2. It reports missing dependencies without
-installing packages.
-
-Keep the LCG analysis shell separate from the CMSSW build/runtime shell. If you
-want to run an analysis command directly under `cmsenv`, first run
-`python3 scripts/check_environment.py` in that shell; all analysis dependencies
-must be present. Do not source the LCG view on top of `cmsenv` to fill gaps.
-Run all CLI commands as `python3 -m egm` from the repository root.
-
-The demo creates synthetic ROOT inputs, builds the dataset, tunes both IDs,
-exports/reloads the BDT, and generates evaluation plots. Its outputs are clearly
-marked synthetic. It does not exercise CMSSW, HLT or storage authentication.
-Use a new output directory on each run; existing results are never overwritten.
-
-## Step 1: ntuple production
-
-1. Copy `config/production.yaml` to a personal config in this repository.
-2. Fill full DAS names (or explicit ROOT URLs), data tier, CMSSW release and
-   architecture, conditions provenance, and the EOS output URL. Enable only the
-   samples you intend to process. The template includes a full GMSB dataset name;
-   other sample entries require complete dataset names or file lists.
-3. Follow [CMSSW compatibility](docs/cmssw.md) to inspect one file and identify
-   the **pre-ID** EGM collection and its feature maps. Fill the InputTags in YAML.
-4. Choose `cmssw.mode: existing` if the needed HLT products are persisted, or
-   `rerun` with a self-contained, campaign-compatible HLT replay pset.
-
-Create and compile a CMSSW area with `cmsrel`, `cmsenv` and `scram b`.
-`EGM_REPO` is the absolute path of your checkout, outside the CMSSW area.
-Set `EGM_RELEASE` and `SCRAM_ARCH` to the exact release/architecture you want to
-test; the dataset's `140X` GlobalTag prefix does not identify a patch release.
+In a fresh shell:
 
 ```bash
 source /cvmfs/cms.cern.ch/cmsset_default.sh
-export EGM_REPO=/absolute/path/to/Displaced_EGM_HLT
-export EGM_RELEASE=CMSSW_X_Y_Z
-export SCRAM_ARCH=YOUR_VALIDATED_SCRAM_ARCH
-cmsrel "$EGM_RELEASE"
-cd "$EGM_RELEASE/src"
+export SCRAM_ARCH=el9_amd64_gcc14
+mkdir -p "$HOME/cmssw"
+cd "$HOME/cmssw"
+cmsrel CMSSW_20_1_0_pre5
+cd CMSSW_20_1_0_pre5/src
 cmsenv
+git clone https://github.com/tihsu99/Displaced_EGM_HLT.git "$HOME/cmssw/Displaced_EGM_HLT"
 mkdir -p DisplacedEGM
-cp -R "$EGM_REPO/cmssw/DisplacedEGM/Ntuplizer" DisplacedEGM/
+cp -R "$HOME/cmssw/Displaced_EGM_HLT/cmssw/DisplacedEGM/Ntuplizer" DisplacedEGM/
 scram b -j 8
 edmPluginHelp -p EGMNtuplizer
 ```
 
-The copy installs this checkout's C++ package at CMSSW's required two-level
-package path; clone/update the repository before this step when working on
-lxplus. If `DisplacedEGM/Ntuplizer` already exists, inspect and synchronize its
-source instead of copying another directory into it. When the code changes,
-update that package and run `scram b` again. Record `$CMSSW_BASE`,
-`$CMSSW_VERSION` and `$SCRAM_ARCH` in `cmssw.base`, `release` and `scram_arch` in
-your YAML. Keep the compiled area on a filesystem accessible to batch workers
-at the same absolute path. `/tmp` is unsuitable for a shared batch runtime.
+The checkout lives beside the CMSSW area; the compiled package is installed at
+`src/DisplacedEGM/Ntuplizer`. The last command must find `EGMNtuplizer`.
+Keep the compiled area accessible at
+this same path from Condor workers. After changing the C++ package, synchronize
+its files into `src/DisplacedEGM/Ntuplizer`, rebuild, and prepare a new farm.
 
-The default is `cmssw.runtime: prebuilt`: compile once, then activate the same
-area for local and Condor runs. `prepare` checks the installed package against
-this checkout and saves source/library checksums. Rebuilding or changing that
-package/library invalidates the farm and its local-test receipts. Do not edit
-the shared area while jobs run; custom replay dependencies also need to remain
-unchanged. Only this ntuplizer's source/library are checksum-tracked.
+## 2. Activate analysis tools and set the output location
 
-Start in a fresh lxplus Bash shell at the repository root. `dasgoclient`,
-`xrdcp`, `xrdfs`, `condor_submit`, `voms-proxy-info`, and CVMFS must be available.
+Open a **second fresh shell**, without `cmsenv`:
 
 ```bash
 source /cvmfs/cms.cern.ch/cmsset_default.sh
+export EGM_CMSSW_BASE="$HOME/cmssw/CMSSW_20_1_0_pre5"
+cd "$HOME/cmssw/Displaced_EGM_HLT"
+source env.sh
 voms-proxy-init --voms cms --valid 192:00
 export X509_USER_PROXY=$(voms-proxy-info --path)
-source env.sh
-
+export EGM_EOS="root://eosuser.cern.ch//eos/user/${USER:0:1}/$USER/displaced_egm"
+export EGM_RESULTS="/eos/user/${USER:0:1}/$USER/displaced_egm/study_v1"
+cp config/production.yaml config/my_production.yaml
 python3 -m egm validate config/my_production.yaml
-export EGM_FARM=/tmp/$USER-egm-farm-v1
+```
+
+Expect `Configuration valid:` followed by the enabled sample names. The template
+contains the release, conditions, replay sequence, InputTags and five dataset
+names. Change `samples.<name>.enabled` to choose samples; change `campaign` for
+each new production. `EGM_EOS` and `EGM_CMSSW_BASE` are the two site-specific paths.
+
+`env.sh` sources `LCG_107/x86_64-el9-gcc14-opt` and checks the analysis libraries.
+Its setup path is controlled by `config/environment.sh` or `EGM_LCG_SETUP`.
+If that check fails, stop and select a compatible centrally installed view.
+
+## 3. Run one GMSB file locally
+
+Continue in the analysis shell:
+
+```bash
+export EGM_PILOT=/tmp/$USER-egm-pilot-v1
+python3 -m egm prepare config/my_production.yaml --samples gmsb --max-files 1 --farm "$EGM_PILOT"
+python3 -m egm local-test --farm "$EGM_PILOT"
+```
+
+`prepare` resolves the input with DAS and freezes the code, configuration and
+compiled plugin checksums. `local-test` activates CMSSW, stages one file in `/tmp`,
+reruns the configured HLT producers for 100 events, and writes the ntuple. It
+does not submit jobs or upload event data.
+
+Expect `LOCAL TEST PASSED; ROOT and logs: ...`. In that printed scratch directory,
+inspect `worker.log`, `event_content.txt`, `replay_metadata.json`,
+`replay_config.py`, `inspection.json` and `ntuple.root`. A failure stops here;
+the end of `worker.log` is also printed. Successful output must close cleanly and
+contain nonzero event and candidate counts.
+
+The replay schedules feature producers for every event, without L1 or ID filters.
+It lowers the supercluster ET threshold from 10 to 0 GeV; the 5 GeV analysis cut
+is applied later. `hoe` is the HLT hadronic-energy map divided by candidate energy.
+See [feature definitions](docs/cmssw.md#feature-definitions).
+
+## 4. Submit the one-file Condor pilot
+
+```bash
+python3 -m egm submit --farm "$EGM_PILOT" --dry-run
+```
+
+This prints the submit description. To submit that pilot:
+
+```bash
+python3 -m egm submit --farm "$EGM_PILOT"
+condor_q "$USER"
+```
+
+Workers run in `_CONDOR_SCRATCH_DIR`. Successful jobs upload the ROOT ntuple and
+provenance archive to EOS, then publish a JSON completion receipt. Check for all
+three files under `phase2_barrel_201pre5_v1/gmsb/` at your EOS destination.
+The pilot processes the whole first file in batch; the local test processes only
+`production.local_test_events`. Neither output represents the complete sample.
+
+## 5. Produce all enabled samples
+
+Set a new campaign name so full production does not collide with the pilot:
+
+```bash
+python3 - <<'PY'
+from pathlib import Path
+import yaml
+path = Path("config/my_production.yaml")
+config = yaml.safe_load(path.read_text())
+config["campaign"] = "phase2_barrel_201pre5_full_v1"
+path.write_text(yaml.safe_dump(config, sort_keys=False))
+PY
+export EGM_FARM="$HOME/egm-farms/phase2_barrel_201pre5_full_v1"
 python3 -m egm prepare config/my_production.yaml --farm "$EGM_FARM"
 python3 -m egm local-test --farm "$EGM_FARM"
 python3 -m egm submit --farm "$EGM_FARM" --dry-run
+```
 
-# Submit jobs after reviewing the dry-run output.
+The local test must pass for every enabled sample. After reviewing the dry run:
+
+```bash
 python3 -m egm submit --farm "$EGM_FARM"
 ```
 
-`prepare --samples gmsb --max-files 1` prepares a smaller pilot farm. Local tests
-use the first input file of each selected sample and `production.local_test_events`.
-The same worker and frozen source run locally and in batch. **Do not use a
-one-file pilot's output as the full production dataset.** Prepare a full farm,
-test it, then submit it when ready. A farm is a small snapshot, jobs, manifests,
-and logs; it may live in AFS if you need durable submission metadata. Do not
-submit from EOS. `/tmp` farms need to be archived before the submit node cleans
-them; keep `manifest.json`, job JSONs, source archive and worker files together.
+The farm holds small job descriptions, source snapshots and Condor logs. Event
+data and replay intermediates stay in scratch; completed ntuples go to EOS.
+Keep the farm and compiled area unchanged while jobs run. Existing outputs are
+never overwritten. Inspect incomplete output before retrying a failed job.
 
-Each worker activates the configured area with `scram runtime -sh` (the Bash
-equivalent of `cmsenv`), returns to `_CONDOR_SCRATCH_DIR` (or `/tmp` for a local
-test), and executes `cmsRun`. There is no build in the default worker flow.
-Staged input files, optional HLT replay output, ROOT ntuple and logs all stay in
-scratch. The job needs disk for all of them together; measure before increasing
-files/job. To build a separate CMSSW area in each worker's scratch directory,
-set `cmssw.runtime: scratch`; it uses `cmssw.build_jobs` and ignores `cmssw.base`.
+## 6. Build the dataset, tune IDs and evaluate
 
-Successful batch jobs copy ROOT and provenance to EOS using checksum-verified
-XRootD, then publish the JSON receipt last. Interrupted output without a receipt
-is not accepted as complete. No existing output is overwritten. If stage-out
-partly succeeds, inspect/archive that job's artifacts before retrying; automatic
-resubmission is intentionally not provided. A failed local job prints its scratch
-path; inspect `worker.log`. Batch failure logs are forwarded to the Condor error
-log; worker scratch may be deleted by Condor at exit.
-
-The local test verifies reading, the selected compiled plugin, product availability,
-nonempty events/candidates and ROOT schema. It does **not** certify HLT physics,
-global-tag/geometry correctness, all files of a sample, or EOS write permission.
-Run a one-file Condor pilot and inspect the EOS receipt before a full campaign.
-
-## Steps 2-4: datasets, tuning, evaluation
-
-Use an EOS **mounted path** for final analysis artifacts. Every stage writes in
-local temporary storage first and copies completed artifacts to the destination.
-The ntuplizer uses XRootD URLs; analysis output uses filesystem paths. No large
-data is written under this repository or AFS.
-Start these commands from the repository root in the LCG shell (`source env.sh`).
+After every job has a completion receipt, run from the repository root in the
+analysis environment. Use a batch allocation for full datasets; the automated
+Condor commands above cover ntuple production.
 
 ```bash
-export EGM_RESULTS=/eos/user/u/username/displaced_egm/study_v1
-python3 -m egm dataset --farm "$EGM_FARM" --study config/study.yaml \
-    --output "$EGM_RESULTS/dataset"
-python3 -m egm tune-cuts --dataset "$EGM_RESULTS/dataset" --study config/study.yaml \
-    --output "$EGM_RESULTS/cuts"
-python3 -m egm tune-bdt --dataset "$EGM_RESULTS/dataset" --study config/study.yaml \
-    --output "$EGM_RESULTS/bdt"
-python3 -m egm evaluate --dataset "$EGM_RESULTS/dataset" --study config/study.yaml \
-    --cuts "$EGM_RESULTS/cuts/model.json" --bdt "$EGM_RESULTS/bdt/model.json" \
-    --output "$EGM_RESULTS/evaluation"
+python3 -m egm dataset --farm "$EGM_FARM" --study config/study.yaml --output "$EGM_RESULTS/dataset"
+python3 -m egm tune-cuts --dataset "$EGM_RESULTS/dataset" --study config/study.yaml --output "$EGM_RESULTS/cuts"
+python3 -m egm tune-bdt --dataset "$EGM_RESULTS/dataset" --study config/study.yaml --output "$EGM_RESULTS/bdt"
+python3 -m egm evaluate --dataset "$EGM_RESULTS/dataset" --study config/study.yaml --cuts "$EGM_RESULTS/cuts/model.json" --bdt "$EGM_RESULTS/bdt/model.json" --output "$EGM_RESULTS/evaluation"
 ```
 
-`dataset` requires a receipt for every job in the farm and verifies the ROOT
-SHA256 before reading. It streams ROOT chunks to Parquet and detects duplicate
-event identities. Candidate tables preserve sample, event identity, truth category,
-signed generator weight and displacement. A separate generator table includes
-unmatched signal particles, and an event table includes zero-candidate events.
-The event-identity index grows with the number of events; allocate adequate RAM.
+Expect candidate, generator and event Parquet tables; two `model.json` files;
+and evaluation PNG/PDF plots with JSON metrics. `dataset` verifies the receipts
+and ROOT checksums. Analysis outputs use a mounted EOS path and are first written
+in local temporary storage. Use new output directories for another run.
 
-Tuning loads candidates into memory and refuses more than 2 million rows by
-default. For a larger study, request an appropriate batch memory allocation and
-set `--max-rows` explicitly. No silent truncation or resampling occurs. Full-scale
-dataset conversion/training should run in a batch allocation rather than occupy
-a shared lxplus login node. The automated Condor interface currently covers
-Step 1; Steps 2-4 use these same CLI commands in your chosen allocation.
+The default event split is 60/20/20 for training, validation and testing.
+`config/study.yaml` controls matching, features, cut bounds, BDT parameters,
+working points and plot bins. Tuning loads candidates into memory and limits
+input to two million rows unless `--max-rows` is set explicitly. Cut working points
+are optimized independently and need not be nested. Evaluation reports object
+efficiencies and event acceptance, not a trigger rate in Hz.
 
-The cut tuner searches signal-quantile thresholds within YAML bounds and requires
-the target signal efficiency on both train and validation. Working points are
-optimized independently and are **not guaranteed to be nested**. The BDT uses
-`GradientBoostingClassifier`, selects its grid point by weighted validation AUC,
-then freezes validation thresholds. JSON export is numerically compared with
-the fitted classifier. `apply-id` uses only JSON and input features, without
-deserializing Python pickle objects:
+## 7. Apply an exported ID
 
 ```bash
-python3 -m egm apply-id --input "$EGM_RESULTS/dataset/candidates.parquet" \
-    --model "$EGM_RESULTS/bdt/model.json" --working-point 0.8 \
-    --output "$EGM_RESULTS/applied_bdt"
+python3 -m egm apply-id --input "$EGM_RESULTS/dataset/candidates.parquet" --model "$EGM_RESULTS/bdt/model.json" --working-point 0.8 --output "$EGM_RESULTS/applied_bdt"
 ```
 
-Input features must have the same definitions, units and preselection used in
-training. The application command does not apply reconstruction or preselection.
-These exported IDs are for offline studies; deploying a BDT in an HLT filter,
-CMSSW model conversion and latency validation are separate work.
+The result is `predictions.parquet` with scores and ID decisions. Inputs must use
+the same feature definitions and selection as training. Deployment inside an
+HLT filter and latency measurements are separate from this offline workflow.
 
-## Project layout
+## Software checks and further reading
 
-| File | Responsibility |
-| --- | --- |
-| `config/production.yaml` | Samples, CMSSW, product labels, scratch/EOS/Condor |
-| `env.sh`, `config/environment.sh` | Direct CVMFS analysis setup, with no local environment creation |
-| `config/study.yaml` | Acceptance, matching, features, tuning and plots |
-| `cmssw/DisplacedEGM/Ntuplizer/plugins/EGMNtuplizer.cc` | Lossless extraction of the configured products |
-| `cmssw/ntuple_cfg.py` | CMSSW extraction configuration |
-| `scripts/worker.py` | Scratch lifecycle and stage-out |
-| `egm/production.py` | Frozen jobs, local-test gate, Condor submission |
-| `egm/data.py` | Truth, matching, event splits, denominators |
-| `egm/tuning.py` | Cut/BDT fitting and portable inference |
-| `egm/evaluation.py` | Held-out plots and explicit denominators |
-| `tests/` | Synthetic physics-logic and workflow regression checks |
+For a synthetic end-to-end check in the analysis shell:
 
-## Validation status and further reading
+```bash
+python3 scripts/check_environment.py --tests
+python3 -m pytest -q
+python3 -m egm demo --output /tmp/$USER-egm-demo
+```
 
-The Python workflow has been exercised with synthetic ROOT inputs. The selected
-CVMFS runtime, CMSSW plugin build, actual Phase-2 samples, HLT replay, Condor and
-EOS still require validation on lxplus. Synthetic tests do not establish sample
-compatibility or physics performance.
+Synthetic checks exercise analysis and workflow logic. A CMSSW build,
+sample-level replay, Condor pilot and EOS receipt are required before production.
 
-The production template requires campaign-specific product labels, a CMSSW
-release, runtime conditions and an EOS destination before use. The configured
-GMSB dataset's content and compatibility with newer releases remain unverified.
-
-- [Physics definitions and limits](docs/physics.md): truth matching, efficiency
-  denominators, electron extensions and rate interpretation.
-- [CMSSW compatibility](docs/cmssw.md): input inspection, release comparison and
-  HLT replay requirements.
-- [Validation checklist](docs/handoff.md): software checks, production pilots
-  and output inspection.
+- [CMSSW sources and implementation](docs/cmssw.md)
+- [Physics definitions and limits](docs/physics.md)
+- [Validation checklist](docs/handoff.md)

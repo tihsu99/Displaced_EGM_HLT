@@ -107,7 +107,7 @@ def main():
     attempts = job["production"]["stageout_attempts"]
     upload(scratch / "ntuple.root", base, attempts)
     with tarfile.open(scratch / "provenance.tar.gz", "w:gz") as archive:
-        for name in ["worker.log", "resolved.json", "input_provenance.txt", "event_content.txt", "ntuple_config.py", "FrameworkJobReport.xml", "ReplayJobReport.xml", "inspection.json", "cmssw/replay_cfg.py"]:
+        for name in ["worker.log", "resolved.json", "input_provenance.txt", "event_content.txt", "ntuple_config.py", "FrameworkJobReport.xml", "ReplayJobReport.xml", "inspection.json", "cmssw/replay_cfg.py", "cmssw/replay_tools.py", "replay_base.py", "replay_config.py", "replay_metadata.json"]:
             path = scratch / name
             if path.exists():
                 archive.add(path, arcname=name)

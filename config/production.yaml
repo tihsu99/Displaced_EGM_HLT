@@ -1,48 +1,88 @@
-# Fill the null fields from DAS and a validated CMSSW menu, then enable samples.
-# Relative paths resolve against this YAML. No Run-3 scouting products are used.
-campaign: phase2_barrel_v1
+# Unvalidated Phase2Spring24 candidate; no successful 140X sample run is recorded.
+# Source definitions are listed in docs/cmssw.md.
+# Export EGM_CMSSW_BASE, EGM_EOS and X509_USER_PROXY before preparing jobs.
+campaign: phase2_barrel_201pre5_v1
 storage:
-  eos: null  # root://eosuser.cern.ch//eos/user/u/username/displaced_egm
+  eos: ${EGM_EOS}
   redirector: root://cms-xrd-global.cern.ch/
 cmssw:
   # Build once with cmsrel/cmsenv/scram b, then reuse this area locally and on Condor.
   runtime: prebuilt  # Set scratch only when a per-worker build is explicitly wanted.
-  base: null  # Absolute CMSSW area, visible at the same path on lxplus and workers.
-  release: null  # Pin the release compatible with the sample and the HLT menu.
-  scram_arch: null
+  base: ${EGM_CMSSW_BASE}
+  release: CMSSW_20_1_0_pre5
+  scram_arch: el9_amd64_gcc14
   cmsset_default: /cvmfs/cms.cern.ch/cmsset_default.sh
   build_jobs: 2  # Used only by runtime: scratch.
   # existing: consume persisted HLT candidates/maps; rerun: run the pset below first.
-  mode: existing
-  replay_pset: null
+  mode: rerun
+  replay_pset: ../cmssw/replay_cfg.py
   # A replay pset must accept inputFiles, outputFile, maxEvents via VarParsing.
   # Custom dependencies can live in the prebuilt area; keep that area unchanged.
   # Scratch mode requires release-provided dependencies or a self-contained pset.
   provenance:
-    global_tag: null
-    geometry: null
-    era: null
-    menu: null
+    global_tag: auto:phase2_realistic_T35
+    geometry: ExtendedRun4D110
+    era: Phase2C17I13M9
+    menu: 75e33
     input_campaign: Phase2Spring24_PU200
+  replay:
+    process: HLTX
+    threads: 1
+    customise:
+      - SLHCUpgradeSimulations/Configuration/aging.customise_aging_1000
+    load:
+      - HLTrigger.Configuration.HLT_75e33.modules.hltEgammaR9Unseeded_cfi
+      - HLTrigger.Configuration.HLT_75e33.modules.hltEgammaHollowTrackIsoUnseeded_cfi
+    # Producer-only path: no L1, pT, photon ID, pixel-match or event filter.
+    sequence:
+      - HLTBeamSpotSequence
+      - HLTDoFullUnpackingEgammaEcalSequence
+      - HLTEGammaDoLocalHcalSequence
+      - HLTPFClusteringForEgammaUnseededSequence
+      - HLTHgcalTiclPFClusteringForEgammaUnseededSequence
+      - hltEgammaCandidatesUnseeded
+      - hltEgammaClusterShapeUnseeded
+      - hltEgammaR9Unseeded
+      - HLTFastJetForEgammaSequence
+      - hltEgammaHoverEUnseeded
+      - hltEgammaEcalPFClusterIsoUnseeded
+      - HLTPFHcalClusteringForEgammaSequence
+      - hltEgammaHcalPFClusterIsoUnseeded
+      - HLTTrackingSequence
+      - hltEgammaHollowTrackIsoUnseeded
+    parameters:
+      # The menu defaults to 10 GeV; retain candidates below the 5 GeV analysis cut.
+      hltParticleFlowSuperClusterECALUnseeded.thresh_SCEt: 0.0
+    input_commands:
+      - keep *
+      - drop *_hlt*_*_*
+      - drop l1tPFJets_*_*_*
+      - drop l1tTrackerMuons_l1tTkMuonsGmt*_*_HLT
+    output_commands:
+      - drop *
+      - keep *_*_*_HLTX
+      - keep *_genParticles_*_*
+      - keep *_generator_*_*
 ntuplizer:
-  # Inspect edmDumpEventContent; these are intentionally not guessed labels.
-  candidates: null  # reco::RecoEcalCandidateCollection, before the ID cuts
+  candidates: hltEgammaCandidatesUnseeded::HLTX
   gen_particles: genParticles
   generator: generator
   pdg_ids: [22, 11]
   llp_pdg_ids: [1000022]
   invalid_map_values: [-999.0, -9999.0]
+  # The HLT HoverE map contains H in GeV, not the dimensionless ratio.
+  divide_by_candidate_energy: [hoe]
   # No ID, pT, eta, impact-parameter, pixel-hit, or prompt filtering here.
   maps:
     # Each product must be a reco::RecoEcalCandidateIsolationMap keyed to candidates.
-    sigma_ieta_ieta: null
-    s_major: null
-    s_minor: null
-    hoe: null
-    ecal_iso: null
-    hcal_iso: null
-    r9: null
-    track_iso: null
+    sigma_ieta_ieta: hltEgammaClusterShapeUnseeded:sigmaIEtaIEta5x5:HLTX
+    s_major: hltEgammaClusterShapeUnseeded:sMajor:HLTX
+    s_minor: hltEgammaClusterShapeUnseeded:sMinor:HLTX
+    hoe: hltEgammaHoverEUnseeded::HLTX
+    ecal_iso: hltEgammaEcalPFClusterIsoUnseeded::HLTX
+    hcal_iso: hltEgammaHcalPFClusterIsoUnseeded::HLTX
+    r9: hltEgammaR9Unseeded::HLTX
+    track_iso: hltEgammaHollowTrackIsoUnseeded::HLTX
 production:
   files_per_job: 1
   max_events: -1
@@ -53,7 +93,7 @@ condor:
   proxy: ${X509_USER_PROXY}
   flavour: workday
   cpus: 2
-  memory_mb: 4000
+  memory_mb: 8000
   disk_mb: 20000
   requirements: '(OpSysAndVer == "AlmaLinux9") && (Arch == "X86_64")'
 samples:
@@ -62,7 +102,7 @@ samples:
     description: GMSB_L-100TeV_Ctau-1000cm_TuneCP5_14TeV-pythia8
     role: signal
     truth: llp
-    # Supplied dataset name; its file content and release compatibility still need testing.
+    # Input conditions differ from the replay conditions above.
     das: /GMSB_L-100TeV_Ctau-1000cm_TuneCP5_14TeV-pythia8/Phase2Spring24DIGIRECOMiniAOD-PU200_Trk1GeV_140X_mcRun4_realistic_v4-v1/GEN-SIM-DIGI-RAW-MINIAOD
     files: []  # Explicit /store/... LFNs or root:// URLs can replace DAS.
     tier: GEN-SIM-DIGI-RAW-MINIAOD

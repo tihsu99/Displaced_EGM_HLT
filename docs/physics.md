@@ -17,10 +17,12 @@ already implements those changes. The path also has a 60 GeV threshold; the
 Pages 7-16 show pT, shower shape, Smajor, Sminor,
 (Smajor-Sminor)/(Smajor+Sminor), H/E, ECAL isolation, HCAL isolation, R9 and track
 isolation. The YAML exposes their source maps and bounds; the numerical feature
-definitions/units must be checked against the actual producers. `sigma_ieta_ieta`
-is the intended shower-shape mapping, not a verified identification of an unknown
-product. Sentinels, squared widths, full5x5 versus other widths, and R9 versus
-R9-like quantities must not be silently interchanged.
+definitions are specified in the [CMSSW feature table](cmssw.md#feature-definitions).
+The default `sigma_ieta_ieta` uses the `sigmaIEtaIEta5x5` instance, while R9 uses
+the standard empty instance. H/E includes an explicit division of the HLT H map
+by candidate energy. The replay lowers the supercluster ET threshold from 10 to
+0 GeV before the analysis selection. Check distributions on actual samples;
+these choices are not proof of equivalence to the original slide observables.
 
 The default BDT omits pT as an input to reduce kinematic sculpting; pT remains in
 the plots. Add `pt` to the feature YAML if an exact ten-input comparison is wanted.

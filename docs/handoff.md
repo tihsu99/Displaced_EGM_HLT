@@ -23,7 +23,8 @@ Use a new demo output directory for each run.
 ## Production checks
 
 - Obtain one exact dataset/file for each enabled sample and its campaign recipe.
-- Fill CMSSW release, architecture, conditions provenance and HLT product labels.
+- Start from the pinned release, conditions and HLT products in production YAML.
+  Set EGM_CMSSW_BASE and EGM_EOS, then verify the profile against input provenance.
 - Create the CMSSW area with cmsrel, install the package and run scram b once.
   Set runtime: prebuilt and base in YAML; keep the shared area unchanged in jobs.
 - Ensure the signal ancestry survives the chosen generator collection.
@@ -47,9 +48,9 @@ GenEventInfoProduct and reco::GenParticleCollection; real data and packed-only
 generator inputs need an explicit adapter.
 
 The production YAML includes a complete Phase2Spring24 GMSB dataset name.
-Its 140X condition-tag spelling does not establish
-the exact producer patch release, geometry, retained HLT products or compatibility
-with 16_X. Follow the two-release I/O and HLT checks in
+Its 140X condition-tag spelling does not establish the exact producer patch
+release or runtime compatibility with the selected newer release. Follow the
+source definitions and runtime checks in
 [CMSSW compatibility](cmssw.md).
 
 ## Validation boundary

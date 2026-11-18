@@ -23,6 +23,7 @@ process.egm = cms.EDAnalyzer(
     pdgIds=cms.vint32(cfg["pdg_ids"]),
     llpPdgIds=cms.vint32(cfg["llp_pdg_ids"]),
     invalidMapValues=cms.vdouble(cfg["invalid_map_values"]),
+    divideByCandidateEnergy=cms.vstring(cfg.get("divide_by_candidate_energy", [])),
     maps=cms.VPSet(*[cms.PSet(name=cms.string(name), src=cms.InputTag(tag)) for name, tag in cfg["maps"].items()]),
 )
 process.path = cms.Path(process.egm)
