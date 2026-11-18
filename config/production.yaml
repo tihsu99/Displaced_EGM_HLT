@@ -99,7 +99,7 @@ production:
   files_per_job: 1
   max_events: -1
   local_test_events: 100
-  stage_inputs: true
+  stage_inputs: false  # Read root:// directly; true copies each complete input to scratch.
   stageout_attempts: 3
 condor:
   proxy: ${X509_USER_PROXY}

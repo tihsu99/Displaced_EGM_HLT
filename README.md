@@ -109,11 +109,17 @@ compiled library, and requires a matching successful test for every sample.
 After the pilot passes, use a new campaign/farm and omit `--max-files 1` for full
 production. Never overwrite an existing campaign.
 
-Each worker stages its input in `_CONDOR_SCRATCH_DIR`, activates the prebuilt
-CMSSW area, and runs reconstruction, matching and ntuple writing in one `cmsRun`.
+Each worker activates the prebuilt CMSSW area and reads its `root://` inputs
+directly. Reconstruction, matching and ntuple writing run in one `cmsRun`;
+the ntuple, generated configurations and logs stay in `_CONDOR_SCRATCH_DIR`.
+Set `production.stage_inputs: true` only to copy each complete input file to
+scratch before processing. The default is `false`, including for local tests.
 Only the final ntuple and small job provenance/receipt files are uploaded to
 `storage.eos/<campaign>/<sample>/`. Successful workers remove their scratch area.
 AFS holds code and small submission files. Failed/local jobs retain diagnostics.
+The outer worker uses system XRootD tools for optional input copies and EOS
+uploads; `cmsRun` uses the selected CMSSW runtime. Changes to the YAML or worker
+scripts require preparing a new farm with `--dry-run`.
 
 The ROOT tree `egm/Events` stores kinematics, `s_major`, `s_minor`, shower shapes,
 isolations, generator particles and per-candidate matching fields:
