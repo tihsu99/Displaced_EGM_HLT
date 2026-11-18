@@ -14,7 +14,9 @@
 #include "FWCore/Framework/interface/Event.h"
 #include "FWCore/Framework/interface/MakerMacros.h"
 #include "FWCore/Framework/interface/one/EDAnalyzer.h"
+#include "FWCore/ParameterSet/interface/ConfigurationDescriptions.h"
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
+#include "FWCore/ParameterSet/interface/ParameterSetDescription.h"
 #include "FWCore/ServiceRegistry/interface/Service.h"
 #include "FWCore/Utilities/interface/Exception.h"
 #include "FWCore/Utilities/interface/InputTag.h"
@@ -24,6 +26,31 @@
 
 class EGMNtuplizer : public edm::one::EDAnalyzer<edm::one::SharedResources> {
 public:
+  static void fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
+    // Require explicit values so the production YAML remains the source of physics settings.
+    edm::ParameterSetDescription desc;
+    desc.add<edm::InputTag>("objects");
+    desc.add<edm::InputTag>("genParticles");
+    desc.add<edm::InputTag>("generator");
+    desc.add<std::vector<int>>("pdgIds");
+    desc.add<std::vector<int>>("llpPdgIds");
+    desc.add<std::vector<double>>("invalidMapValues");
+    desc.add<std::vector<std::string>>("divideByCandidateEnergy");
+    desc.add<double>("ptMin");
+    desc.add<double>("absEtaMax");
+    desc.add<int>("matchingPdgId");
+    desc.add<std::string>("matchingDirection");
+    desc.add<double>("maxDR");
+    desc.add<double>("ecalRadius");
+    desc.add<double>("ecalHalfLength");
+    desc.add<std::string>("metadata");
+    edm::ParameterSetDescription map;
+    map.add<std::string>("name");
+    map.add<edm::InputTag>("src");
+    desc.addVPSet("maps", map);
+    descriptions.add("egmNtuplizer", desc);
+  }
+
   explicit EGMNtuplizer(const edm::ParameterSet& cfg)
       : objects_(consumes<trigger::EgammaObjectCollection>(cfg.getParameter<edm::InputTag>("objects"))),
         particles_(consumes<reco::GenParticleCollection>(cfg.getParameter<edm::InputTag>("genParticles"))),

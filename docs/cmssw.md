@@ -143,8 +143,11 @@ Inspect these artifacts after the README's local test:
 A clean local run checks the exercised file and events. Compare multiplicities,
 feature distributions, matching and prompt/LLP efficiencies before interpreting
 a release change. Require a Condor pilot with ROOT, provenance and receipt on EOS
-before full production. This release has not yet been built or run on these
-samples by this project.
+before full production. A reported lxplus build on 2026-11-18 compiled and
+registered `EGMNtuplizer` in CMSSW_20_1_0_pre5 with el9_amd64_gcc14;
+`edmPluginHelp` loaded `pluginDisplacedEGMNtuplizerPlugins.so`. That build predates
+the addition of `fillDescriptions()`, which still needs a rebuild in CMSSW.
+Processing the configured 140X samples remains unvalidated.
 
 ## Other input profiles
 

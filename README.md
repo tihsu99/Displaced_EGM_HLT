@@ -33,8 +33,11 @@ edmPluginHelp -p EGMNtuplizer
 
 Set `EGM_WORKDIR` to your working directory. The clone itself provides the CMSSW
 package at `src/Displaced_EGM_HLT/Ntuplizer`; `scram b` builds it in place.
-The last command must find `EGMNtuplizer`. Keep the compiled area accessible at
-the same path from Condor workers. After editing `Ntuplizer/plugins/EGMNtuplizer.cc`,
+The last command must find `EGMNtuplizer` and list its parameter descriptions.
+Parameter values come from the production YAML through the bundled cmsRun
+configuration; the generated cfi alone is not a complete job configuration.
+Keep the compiled area accessible at the same path from Condor workers.
+After editing `Ntuplizer/plugins/EGMNtuplizer.cc`,
 run `scram b -j 8` in that CMSSW area and prepare a new farm.
 
 Source layout:

@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 PACKAGE = Path("Displaced_EGM_HLT/Ntuplizer")
-LIBRARY = "libDisplacedEGMNtuplizerPlugins.so"
+LIBRARY = "pluginDisplacedEGMNtuplizerPlugins.so"
 
 
 def checksum(path):
