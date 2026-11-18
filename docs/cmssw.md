@@ -1,10 +1,8 @@
 # CMSSW and old-sample compatibility
 
-Release discovery was checked against the official CMS repository on 2026-11-16.
-The release page lists CMSSW_16_0_11, CMSSW_17_0_0 and the development release
-CMSSW_20_1_0_pre5. These are different release lines, not interchangeable choices
-for a Phase2Spring24 sample. The production template does not pin a guessed
-release, SCRAM_ARCH, geometry or GlobalTag.
+Select the CMSSW release, SCRAM_ARCH, geometry and GlobalTag from the input
+campaign and HLT menu requirements. The production template leaves these fields
+unset until the configuration has been identified and tested.
 Use separate production YAML files/farms for samples that require different
 release/menu/product configurations; never silently mix those environments.
 
@@ -33,9 +31,9 @@ Steps 2-4 read ordinary ROOT/Parquet using the CVMFS LCG view selected by
 area. No virtual environment is created. The ntuplizer worker uses the compiled
 area's own Python and ROOT after `cmsenv`/`scram runtime -sh` activation.
 
-## Supplied GMSB input: 140X versus 16_X
+## GMSB input: 140X versus 16_X
 
-The following user-supplied dataset is now recorded and enabled in production YAML:
+The default production YAML enables this dataset:
 
 ```text
 /GMSB_L-100TeV_Ctau-1000cm_TuneCP5_14TeV-pythia8/Phase2Spring24DIGIRECOMiniAOD-PU200_Trk1GeV_140X_mcRun4_realistic_v4-v1/GEN-SIM-DIGI-RAW-MINIAOD
@@ -124,8 +122,8 @@ offline photon features or Run-3 scouting quantities.
 ## One-file compatibility procedure
 
 1. Resolve the complete dataset and its parentage with DAS. Record the campaign,
-   PU conditions, tier and exact file list. Do not infer full dataset names from
-   the five short names in the slides.
+   PU conditions, tier and exact file list. Use full dataset names or explicit
+   file lists for every enabled sample.
 2. In a clean CMS environment, stage one file into `/tmp` and run:
 
    ```bash
@@ -160,7 +158,7 @@ The default worker reuses the already compiled `cmssw.base`; it does not call
 snapshot is checked before submission and before/after the CMSSW worker run.
 Keep the entire shared area unchanged during production, including any custom
 HLT dependencies not covered by the ntuplizer checksums. The optional
-`cmssw.runtime: scratch` mode retains the original per-worker build behavior.
+`cmssw.runtime: scratch` mode builds a separate CMSSW area for each worker.
 
 ## Replay pset contract
 

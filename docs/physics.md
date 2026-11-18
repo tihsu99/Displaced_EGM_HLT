@@ -1,8 +1,8 @@
 # Physics definitions and limits
 
-## What the slides specify
+## Study scope and source
 
-The supplied *Phase2 HLT: Displaced photon* slides (26 pages, PDF creation metadata
+The *Phase2 HLT: Displaced photon* slides (26 pages, PDF creation metadata
 2025-04-22) study Phase2Spring24 PU200 samples. Pages 3-4 name GMSB and H -> gamma
 gamma as signal and inclusive, EM-enriched and bcToE QCD as background. Both prompt
 and displaced photons count as signal at trigger level. Page 6 sets the initial
@@ -24,8 +24,8 @@ R9-like quantities must not be silently interchanged.
 
 The default BDT omits pT as an input to reduce kinematic sculpting; pT remains in
 the plots. Add `pt` to the feature YAML if an exact ten-input comparison is wanted.
-This is a BDT study requested by the user, not a reproduction of the slide's
-64/32/16 DNN architecture.
+The classifier implemented here is a BDT. The slides use a 64/32/16 DNN
+architecture, so their classifier results are not directly reproduced.
 
 Page 5 quotes background efficiency 0.0029. Visual inspection of page 20 shows
 the cut point labeled (0.0029, 0.1091) and a DNN comparison point labeled

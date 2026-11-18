@@ -69,38 +69,39 @@ samples:
     input_global_tag: 140X_mcRun4_realistic_v4
     instance: prod/global
   hgg:
-    enabled: false
+    enabled: true
     description: GluGluHToGG_M-125_TuneCP5_14TeV-powheg-pythia8
     role: signal
     truth: prompt
-    das: null
+    das: /GluGluHToGG_M-125_TuneCP5_14TeV-powheg-pythia8/Phase2Spring24DIGIRECOMiniAOD-PU200_Trk1GeV_140X_mcRun4_realistic_v4-v2/GEN-SIM-DIGI-RAW-MINIAOD
     files: []
-    tier: null
+    tier: GEN-SIM-DIGI-RAW-MINIAOD
+    input_global_tag: 140X_mcRun4_realistic_v4
     instance: prod/global
   qcd_inclusive:
-    enabled: false
+    enabled: true
     description: QCD_Pt-15To3000_TuneCP5_Flat_14TeV-pythia8
     role: background
     truth: all
-    das: null
+    das: /QCD_Pt-15To3000_TuneCP5_Flat_14TeV-pythia8/Phase2Spring24DIGIRECOMiniAOD-PU200_Trk1GeV_140X_mcRun4_realistic_v4-v1/GEN-SIM-DIGI-RAW-MINIAOD
     files: []
-    tier: null
+    tier: GEN-SIM-DIGI-RAW-MINIAOD
     instance: prod/global
   qcd_em:
-    enabled: false
+    enabled: true
     description: QCD_Pt-15To3000_EMEnriched_TuneCP5_14TeV-pythia8
     role: background
     truth: all
-    das: null
+    das: /QCD_Pt-15To3000_EMEnriched_TuneCP5_14TeV-pythia8/Phase2Spring24DIGIRECOMiniAOD-PU200_Trk1GeV_140X_mcRun4_realistic_v4-v1/GEN-SIM-DIGI-RAW-MINIAOD
     files: []
-    tier: null
+    tier: GEN-SIM-DIGI-RAW-MINIAOD
     instance: prod/global
   qcd_bc:
-    enabled: false
+    enabled: true
     description: QCD_Pt-30To80_bcToE_TuneCP5_14TeV-pythia8
     role: background
     truth: all
-    das: null
+    das: /QCD_Pt-30To80_bcToE_TuneCP5_14TeV-pythia8/Phase2Spring24DIGIRECOMiniAOD-PU200_Trk1GeV_140X_mcRun4_realistic_v4-v1/GEN-SIM-DIGI-RAW-MINIAOD
     files: []
-    tier: null
+    tier: GEN-SIM-DIGI-RAW-MINIAOD
     instance: prod/global

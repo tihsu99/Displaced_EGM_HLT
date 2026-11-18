@@ -1,26 +1,20 @@
 # Displaced EGM HLT
 
-A small, independent workflow for a PhD student studying prompt/displaced photon
-identification at the Phase-2 HLT. The default physics scope follows the supplied
-26-page *Phase2 HLT: Displaced photon* slides: Phase2Spring24 PU200, barrel,
-reconstructed pT > 5 GeV, prompt H -> gamma gamma and GMSB photons versus QCD.
-The requested classifier is a BDT; the slides use a DNN.
+A workflow for developing and evaluating prompt and displaced photon
+identification at the CMS Phase-2 High-Level Trigger (HLT). It extracts HLT
+candidate features with CMSSW, tunes cut-based and boosted decision tree (BDT)
+IDs, and evaluates their performance on held-out events. Production runs on
+lxplus and HTCondor, with temporary job data in scratch and results on EOS.
 
-**Scouting_EGM_ID is a read-only reference.** This project neither imports it nor
-modifies, runs, or links to its code. Its useful patterns are YAML configuration,
-scratch-based production, separate training and validation, and portable ID output.
-The implementation here is independent; the old tuner is not silently reused.
+The default study targets Phase2Spring24 PU200 barrel photons with reconstructed
+pT > 5 GeV and |etaSC| < 1.44, using prompt H -> gamma gamma and GMSB signal
+samples against QCD backgrounds. Sample selection, feature definitions, tuning
+and evaluation settings are configured in YAML. Electron studies require
+separate matching and selection validation; see [physics definitions](docs/physics.md).
 
-**Status:** the Python workflow can be exercised using synthetic ROOT inputs.
-The CMSSW plugin, actual Phase-2 samples, HLT replay, Condor and EOS still require
-the lxplus checks below. No sample/release compatibility or physics performance
-is certified by a passing synthetic test. Production YAML deliberately leaves
-unknown product labels, release and runtime conditions unset. The supplied
-Phase2Spring24 GMSB dataset is recorded; its content has not yet been tested.
+## Workflow
 
-## Student interface
-
-| Step | Command | What you edit | Result |
+| Step | Command | Configuration | Result |
 | --- | --- | --- | --- |
 | 1. Ntuplizer | `prepare`, `local-test`, `submit` | `config/production.yaml` | ROOT + completion receipt + provenance on EOS |
 | Dataset | `dataset` | `config/study.yaml` | Candidate, generator, and event Parquet tables |
@@ -34,7 +28,7 @@ and generator denominators. Hyperparameters and thresholds use validation; the
 test split is reserved for the final evaluation. Nothing trains directly on
 displacement or generator labels as input features.
 
-## First session: software demo
+## Environment and quick start
 
 Use the centrally installed software directly: `cmsenv` for the CMSSW ntuplizer,
 and a CVMFS LCG view for dataset preparation, ID tuning and evaluation. No virtual
@@ -51,41 +45,38 @@ python3 scripts/check_environment.py --tests
 python3 -m pytest -q
 ```
 
-`env.sh` follows the reference project's direct `source /cvmfs/.../setup.sh`
-pattern. The view is selected in `config/environment.sh`, defaulting to
+`env.sh` sources the CVMFS setup selected in `config/environment.sh`, defaulting to
 `LCG_107/x86_64-el9-gcc14-opt`. This published view is listed in the
 [CERN LCG_107 announcement](https://spi.web.cern.ch/2025/02/06/lcg-107-announce.html).
 Override `EGM_LCG_SETUP` with another validated CVMFS setup path if needed.
-The wrapper checks actual imports and minimum versions from `pyproject.toml`;
-it never installs missing packages. The reference's older LCG_102b selection
-is not assumed compatible with this project's Python >= 3.10, Uproot 5 and
-Awkward 2 requirements. Availability of a view is not an end-to-end validation.
+The wrapper checks imports and minimum versions from `pyproject.toml`, including
+Python >= 3.10, Uproot 5 and Awkward 2. It reports missing dependencies without
+installing packages.
 
 Keep the LCG analysis shell separate from the CMSSW build/runtime shell. If you
 want to run an analysis command directly under `cmsenv`, first run
 `python3 scripts/check_environment.py` in that shell; all analysis dependencies
 must be present. Do not source the LCG view on top of `cmsenv` to fill gaps.
-`pyproject.toml` describes the required libraries; the supported entry point is
-`python3 -m egm`, without an editable install. An existing `uv.lock` is not used
-to select or build the production runtime.
+Run all CLI commands as `python3 -m egm` from the repository root.
 
 The demo creates synthetic ROOT inputs, builds the dataset, tunes both IDs,
 exports/reloads the BDT, and generates evaluation plots. Its outputs are clearly
 marked synthetic. It does not exercise CMSSW, HLT or storage authentication.
 Use a new output directory on each run; existing results are never overwritten.
 
-## Step 1: lxplus production
+## Step 1: ntuple production
 
 1. Copy `config/production.yaml` to a personal config in this repository.
 2. Fill full DAS names (or explicit ROOT URLs), data tier, CMSSW release and
    architecture, conditions provenance, and the EOS output URL. Enable only the
-   samples you intend to process. The slide only supplies sample short names.
+   samples you intend to process. The template includes a full GMSB dataset name;
+   other sample entries require complete dataset names or file lists.
 3. Follow [CMSSW compatibility](docs/cmssw.md) to inspect one file and identify
    the **pre-ID** EGM collection and its feature maps. Fill the InputTags in YAML.
 4. Choose `cmssw.mode: existing` if the needed HLT products are persisted, or
    `rerun` with a self-contained, campaign-compatible HLT replay pset.
 
-First create and compile a CMSSW area using the usual CMS development workflow.
+Create and compile a CMSSW area with `cmsrel`, `cmsenv` and `scram b`.
 `EGM_REPO` is the absolute path of your checkout, outside the CMSSW area.
 Set `EGM_RELEASE` and `SCRAM_ARCH` to the exact release/architecture you want to
 test; the dataset's `140X` GlobalTag prefix does not identify a patch release.
@@ -120,8 +111,7 @@ package/library invalidates the farm and its local-test receipts. Do not edit
 the shared area while jobs run; custom replay dependencies also need to remain
 unchanged. Only this ntuplizer's source/library are checksum-tracked.
 
-Start in a fresh lxplus shell with CMS tools and a valid CMS proxy available.
-Do not activate an LCG/Coffea environment inside the worker. `dasgoclient`,
+Start in a fresh lxplus Bash shell at the repository root. `dasgoclient`,
 `xrdcp`, `xrdfs`, `condor_submit`, `voms-proxy-info`, and CVMFS must be available.
 
 ```bash
@@ -135,6 +125,8 @@ export EGM_FARM=/tmp/$USER-egm-farm-v1
 python3 -m egm prepare config/my_production.yaml --farm "$EGM_FARM"
 python3 -m egm local-test --farm "$EGM_FARM"
 python3 -m egm submit --farm "$EGM_FARM" --dry-run
+
+# Submit jobs after reviewing the dry-run output.
 python3 -m egm submit --farm "$EGM_FARM"
 ```
 
@@ -152,8 +144,8 @@ equivalent of `cmsenv`), returns to `_CONDOR_SCRATCH_DIR` (or `/tmp` for a local
 test), and executes `cmsRun`. There is no build in the default worker flow.
 Staged input files, optional HLT replay output, ROOT ntuple and logs all stay in
 scratch. The job needs disk for all of them together; measure before increasing
-files/job. The earlier per-worker build remains opt-in with
-`cmssw.runtime: scratch`; it uses `cmssw.build_jobs` and ignores `cmssw.base`.
+files/job. To build a separate CMSSW area in each worker's scratch directory,
+set `cmssw.runtime: scratch`; it uses `cmssw.build_jobs` and ignores `cmssw.base`.
 
 Successful batch jobs copy ROOT and provenance to EOS using checksum-verified
 XRootD, then publish the JSON receipt last. Interrupted output without a receipt
@@ -222,7 +214,7 @@ training. The application command does not apply reconstruction or preselection.
 These exported IDs are for offline studies; deploying a BDT in an HLT filter,
 CMSSW model conversion and latency validation are separate work.
 
-## Where students develop
+## Project layout
 
 | File | Responsibility |
 | --- | --- |
@@ -238,5 +230,20 @@ CMSSW model conversion and latency validation are separate work.
 | `egm/evaluation.py` | Held-out plots and explicit denominators |
 | `tests/` | Synthetic physics-logic and workflow regression checks |
 
-Read [physics choices](docs/physics.md), [CMSSW compatibility](docs/cmssw.md), and
-[the handoff checklist](docs/handoff.md) before interpreting a result.
+## Validation status and further reading
+
+The Python workflow has been exercised with synthetic ROOT inputs. The selected
+CVMFS runtime, CMSSW plugin build, actual Phase-2 samples, HLT replay, Condor and
+EOS still require validation on lxplus. Synthetic tests do not establish sample
+compatibility or physics performance.
+
+The production template requires campaign-specific product labels, a CMSSW
+release, runtime conditions and an EOS destination before use. The configured
+GMSB dataset's content and compatibility with newer releases remain unverified.
+
+- [Physics definitions and limits](docs/physics.md): truth matching, efficiency
+  denominators, electron extensions and rate interpretation.
+- [CMSSW compatibility](docs/cmssw.md): input inspection, release comparison and
+  HLT replay requirements.
+- [Validation checklist](docs/handoff.md): software checks, production pilots
+  and output inspection.
